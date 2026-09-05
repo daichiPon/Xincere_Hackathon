@@ -28,9 +28,9 @@ struct MeasurementInputView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
-                        model.measurements.append(
-                            Measurement(ageMonths: model.ageMonths, date: date,
-                                        heightCm: height, weightKg: weight, headCm: head)
+                        model.addMeasurement(
+                            ageMonths: model.ageMonths, date: date,
+                            heightCm: height, weightKg: weight, headCm: head
                         )
                         dismiss()
                     }

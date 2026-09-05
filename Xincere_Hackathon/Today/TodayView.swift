@@ -5,7 +5,11 @@ import Combine
 /// 「最後の授乳から」を最大表示、記録は 2×2 グリッド、下部に直近ログ。
 struct TodayView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AuthStore.self) private var authStore
     @State private var showFeedingTimer = false
+    @State private var showBottleInput = false
+    @State private var showSettings = false
+    @State private var bottleAmountML = 120
     @State private var quickToast: String?
 
     // 1 秒ごとに経過時間表示を更新する。
@@ -32,11 +36,30 @@ struct TodayView: View {
                         Text(model.childName).font(.headline)
                         Text(model.ageText).font(.caption).foregroundStyle(.secondary)
                     }
+                    .fixedSize()
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSettings = true } label: {
+                        Image(systemName: "person.circle")
+                            .font(.system(size: 22))
+                            .foregroundStyle(Theme.brand)
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) { EmergencyButton() }
             }
+            .sheet(isPresented: $showSettings) {
+                SettingsSheet(inviteCode: model.inviteCode ?? authStore.inviteCode ?? "—") {
+                    authStore.logout()
+                }
+            }
             .sheet(isPresented: $showFeedingTimer) {
                 FeedingTimerView()
+            }
+            .sheet(isPresented: $showBottleInput) {
+                BottleInputView(amountML: $bottleAmountML) { amount in
+                    model.addLog(.bottle, detail: "\(amount)ml")
+                    showToast("ミルク \(amount)ml を記録しました")
+                }
             }
             .overlay(alignment: .bottom) {
                 if let quickToast {
@@ -90,7 +113,10 @@ struct TodayView: View {
     private var quickGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
             ForEach(CareKind.quickActions) { kind in
-                QuickRecordButton(kind: kind, isRunning: kind == .feeding && model.isFeeding) {
+                QuickRecordButton(
+                    kind: kind,
+                    isRunning: (kind == .feeding && model.isFeeding) || (kind == .sleep && model.isSleeping)
+                ) {
                     tapQuick(kind)
                 }
             }
@@ -102,11 +128,15 @@ struct TodayView: View {
         case .feeding:
             showFeedingTimer = true
         case .bottle:
-            model.addLog(.bottle, detail: "120ml")
-            showToast("ミルクを記録しました")
+            showBottleInput = true
         case .sleep:
-            model.addLog(.sleep, detail: "記録開始")
-            showToast("睡眠を記録しました")
+            if model.isSleeping {
+                model.toggleSleep()
+                showToast("睡眠を記録しました")
+            } else {
+                model.toggleSleep()
+                showToast("睡眠を開始しました")
+            }
         case .diaper:
             model.addLog(.diaper, detail: "おしっこ")
             showToast("おむつを記録しました")
@@ -162,7 +192,7 @@ private struct QuickRecordButton: View {
             VStack(spacing: 10) {
                 Image(systemName: isRunning ? "stop.fill" : kind.symbol)
                     .font(.system(size: 30, weight: .semibold))
-                Text(isRunning ? "授乳中…" : kind.title)
+                Text(isRunning ? (kind == .sleep ? "睡眠中…" : "授乳中…") : kind.title)
                     .font(.headline)
             }
             .foregroundStyle(kind.tint)
@@ -228,7 +258,124 @@ struct UndoToast: View {
     }
 }
 
+// MARK: - ミルク量入力
+
+private struct BottleInputView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var amountML: Int
+    let onRecord: (Int) -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 40) {
+                Spacer()
+
+                VStack(spacing: 8) {
+                    Text("\(amountML)")
+                        .font(.system(size: 72, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.sage)
+                    Text("ml")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Stepper("", value: $amountML, in: 10...400, step: 10)
+                    .labelsHidden()
+                    .scaleEffect(1.3)
+
+                Spacer()
+            }
+            .padding(24)
+            .background(Theme.screenBackground)
+            .navigationTitle("ミルク記録")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("記録") {
+                        onRecord(amountML)
+                        dismiss()
+                    }
+                    .font(.body.weight(.semibold))
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+// MARK: - 設定シート（招待コード・ログアウト）
+
+private struct SettingsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let inviteCode: String
+    let onLogout: () -> Void
+
+    @State private var copied = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(spacing: 12) {
+                        Text("招待コード")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text(inviteCode)
+                            .font(.system(size: 40, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Theme.brand)
+                            .tracking(8)
+                        Button {
+                            UIPasteboard.general.string = inviteCode
+                            copied = true
+                            Task {
+                                try? await Task.sleep(for: .seconds(2))
+                                copied = false
+                            }
+                        } label: {
+                            Label(copied ? "コピーしました" : "コードをコピー",
+                                  systemImage: copied ? "checkmark" : "doc.on.doc")
+                                .font(.subheadline.weight(.medium))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Theme.brandSoft, in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.brand)
+                    }
+                    .padding(.vertical, 8)
+                } header: {
+                    Text("パートナーと共有")
+                } footer: {
+                    Text("このコードをパートナーに伝え、アプリ内「招待参加」タブで入力してもらうと同じ世帯のデータを共有できます。")
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        onLogout()
+                        dismiss()
+                    } label: {
+                        Label("ログアウト", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            }
+            .navigationTitle("設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("閉じる") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
 #Preview {
     TodayView()
         .environment(AppModel())
+        .environment(AuthStore())
 }

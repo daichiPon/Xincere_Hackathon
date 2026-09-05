@@ -15,3 +15,7 @@ build/
 
 # Simulators & Devices
 *.app
+
+# Backend
+backend/node_modules/
+backend/.wrangler/
