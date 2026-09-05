@@ -1,4 +1,4 @@
-# xincere backend worker
+# xincere backend worker - v2
 name = "xincere-api"
 main = "src/index.ts"
 compatibility_date = "2024-05-29"
