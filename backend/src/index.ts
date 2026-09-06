@@ -245,10 +245,13 @@ app.post('/api/logs', async (c) => {
   const { kind, timeMs, detail } = await c.req.json<{ kind: string; timeMs: number; detail: string }>()
   const id = crypto.randomUUID()
   const now = Date.now()
+  const me = await c.env.DB.prepare('SELECT name FROM users WHERE id = ?')
+    .bind(c.get('userId')).first<{ name: string }>()
+  const recordedBy = me?.name ?? ''
   await c.env.DB.prepare(
-    'INSERT INTO care_logs (id, household_id, kind, time, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).bind(id, hid, kind, timeMs, detail, now).run()
-  return c.json({ id, household_id: hid, kind, time: timeMs, detail, created_at: now }, 201)
+    'INSERT INTO care_logs (id, household_id, kind, time, detail, recorded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, hid, kind, timeMs, detail, recordedBy, now).run()
+  return c.json({ id, household_id: hid, kind, time: timeMs, detail, recorded_by: recordedBy, created_at: now }, 201)
 })
 
 app.delete('/api/logs/:id', async (c) => {

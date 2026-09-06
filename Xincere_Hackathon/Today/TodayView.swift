@@ -9,6 +9,7 @@ struct TodayView: View {
     @State private var showFeedingTimer = false
     @State private var showBottleInput = false
     @State private var showTempInput = false
+    @State private var showManualLog = false
     @State private var showProfile = false
     @State private var bottleAmountML = 120
     @State private var tempValue = 36.8
@@ -24,7 +25,15 @@ struct TodayView: View {
                 VStack(spacing: 20) {
                     elapsedCard
                     quickGrid
+                    Button {
+                        showManualLog = true
+                    } label: {
+                        Label("時刻を指定して記録", systemImage: "clock.arrow.circlepath")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Theme.brand)
+                    }
                     todayTally
+                    rhythmCard
                     recentSection
                 }
                 .padding(16)
@@ -66,6 +75,9 @@ struct TodayView: View {
                     model.addLog(.temperature, detail: String(format: "%.1f℃", t))
                     showToast(String(format: "体温 %.1f℃ を記録しました", t))
                 }
+            }
+            .sheet(isPresented: $showManualLog) {
+                ManualLogView()
             }
             .overlay(alignment: .bottom) {
                 if let quickToast {
@@ -163,6 +175,49 @@ struct TodayView: View {
             tallyTile("うんち", count([.poop]), .poop)
             tallyTile("おしっこ", count([.pee, .diaper]), .pee)
         }
+    }
+
+    // MARK: - リズム（傾向）
+
+    private var rhythmCard: some View {
+        let feeds = model.logs
+            .filter { ($0.kind == .feeding || $0.kind == .bottle) && $0.time > now.addingTimeInterval(-24 * 3600) }
+            .map(\.time)
+            .sorted()
+        let intervals = zip(feeds, feeds.dropFirst()).map { $1.timeIntervalSince($0) }
+        let avgInterval = intervals.isEmpty ? nil : intervals.reduce(0, +) / Double(intervals.count)
+
+        let cal = Calendar.current
+        let weekAgo = now.addingTimeInterval(-7 * 24 * 3600)
+        let nightFeeds = model.logs.filter {
+            ($0.kind == .feeding || $0.kind == .bottle) && $0.time > weekAgo
+                && (0..<6).contains(cal.component(.hour, from: $0.time))
+        }.count
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("最近のリズム").font(.headline)
+            HStack(spacing: 8) {
+                rhythmTile("授乳の間隔（24h平均）", avgInterval.map { intervalText($0) } ?? "—")
+                rhythmTile("夜間の授乳（1晩あたり）", nightFeeds > 0 ? "約\(nightFeeds / 7)回" : "—")
+            }
+        }
+        .cardStyle()
+    }
+
+    private func rhythmTile(_ title: String, _ value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value).font(.title3.weight(.bold)).foregroundStyle(Theme.brand)
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Theme.brandSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func intervalText(_ seconds: TimeInterval) -> String {
+        let m = Int(seconds / 60)
+        return m >= 60 ? "\(m / 60)時間\(m % 60)分" : "\(m)分"
     }
 
     private func tallyTile(_ title: String, _ n: Int, _ kind: CareKind) -> some View {
@@ -303,7 +358,14 @@ struct LogRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(log.kind.title).font(.subheadline.weight(.medium))
-                Text(log.detail).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(log.detail).font(.caption).foregroundStyle(.secondary)
+                    if !log.recordedBy.isEmpty {
+                        Text("· \(log.recordedBy)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
             Spacer()
             Text(log.time.formatted(date: .omitted, time: .shortened))

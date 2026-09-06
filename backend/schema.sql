@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS care_logs (
   kind         TEXT NOT NULL,
   time         INTEGER NOT NULL,
   detail       TEXT NOT NULL,
+  recorded_by  TEXT NOT NULL DEFAULT '',   -- 記録した人の名前(表示用)
   created_at   INTEGER NOT NULL
 );
 

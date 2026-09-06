@@ -51,6 +51,7 @@ struct CareLogResponse: Decodable {
     let kind: String
     let time: Int           // milliseconds
     let detail: String
+    let recordedBy: String?
 }
 
 struct MeasurementResponse: Decodable {

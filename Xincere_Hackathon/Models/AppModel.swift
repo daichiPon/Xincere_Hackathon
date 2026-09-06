@@ -61,9 +61,11 @@ struct CareLog: Identifiable {
     var kind: CareKind
     var time: Date
     var detail: String
+    var recordedBy: String
 
-    init(id: UUID = UUID(), kind: CareKind, time: Date = .now, detail: String) {
+    init(id: UUID = UUID(), kind: CareKind, time: Date = .now, detail: String, recordedBy: String = "") {
         self.id = id; self.kind = kind; self.time = time; self.detail = detail
+        self.recordedBy = recordedBy
     }
 }
 
@@ -185,7 +187,7 @@ final class AppModel {
     // 授乳タイマー
     var feedingStart: Date?
     var feedingSide: FeedingSide = .left
-    enum FeedingSide: String { case left = "左", right = "右" }
+    enum FeedingSide: String, CaseIterable { case left = "左", right = "右", both = "両方" }
 
     // 睡眠タイマー
     var sleepStart: Date?
@@ -258,7 +260,8 @@ final class AppModel {
                     id: UUID(uuidString: r.id) ?? UUID(),
                     kind: kind,
                     time: Date(timeIntervalSince1970: Double(r.time) / 1000),
-                    detail: r.detail
+                    detail: r.detail,
+                    recordedBy: r.recordedBy ?? ""
                 )
             }
 
@@ -504,9 +507,9 @@ final class AppModel {
                     timeMs: Int(time.timeIntervalSince1970 * 1000),
                     detail: detail
                 ))
-                if let idx = logs.firstIndex(where: { $0.id == localId }),
-                   let sid = UUID(uuidString: resp.id) {
-                    logs[idx].id = sid
+                if let idx = logs.firstIndex(where: { $0.id == localId }) {
+                    if let sid = UUID(uuidString: resp.id) { logs[idx].id = sid }
+                    logs[idx].recordedBy = resp.recordedBy ?? ""
                 }
             } catch { /* ローカルデータをそのまま保持 */ }
         }
