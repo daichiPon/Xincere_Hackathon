@@ -59,6 +59,7 @@ struct ProfileView: View {
 
     // MARK: - 子・世帯
 
+    @ViewBuilder
     private var childSection: some View {
         Section {
             LabeledContent("お子さんの名前") {

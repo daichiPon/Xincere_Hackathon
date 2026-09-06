@@ -50,10 +50,10 @@ enum CareKind: String, CaseIterable, Identifiable {
         }
     }
 
-    /// うんち・おしっこは1タップ即記録。授乳・ミルク・睡眠は入力/タイマーへ。
+    /// うんち・おしっこは1タップ即記録。授乳・ミルク・睡眠・体温は入力/タイマーへ。
     var isOneTap: Bool { self == .pee || self == .poop }
 
-    static let quickActions: [CareKind] = [.feeding, .bottle, .sleep, .pee, .poop]
+    static let quickActions: [CareKind] = [.feeding, .bottle, .sleep, .pee, .poop, .temperature]
 }
 
 struct CareLog: Identifiable {
