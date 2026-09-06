@@ -191,9 +191,12 @@ final class AppModel {
     var programs: [Program] = []
     var programsWard: String = ""
     var isLoadingPrograms = false
+    var programsError: String?
 
     // 予防接種スケジュール（F-5）
     var vaccines: [Vaccine] = []
+    var isLoadingVaccines = false
+    var vaccinesError: String?
 
     // ネットワーク
     var apiClient: APIClient?
@@ -308,6 +311,7 @@ final class AppModel {
     func fetchPrograms(ward: String) async {
         guard let client = apiClient else { return }
         isLoadingPrograms = true
+        programsError = nil
         defer { isLoadingPrograms = false }
         do {
             var comps = URLComponents()
@@ -317,9 +321,9 @@ final class AppModel {
             let resp: ProgramListResponse = try await client.get(path)
             programs = resp.items
             programsWard = ward
-            syncError = nil
         } catch {
-            syncError = error.localizedDescription
+            programs = []
+            programsError = error.localizedDescription
         }
     }
 
@@ -364,13 +368,17 @@ final class AppModel {
 
     // MARK: - 予防接種
 
-    func fetchVaccines() async {
-        guard let client = apiClient, vaccines.isEmpty else { return }
+    func fetchVaccines(force: Bool = false) async {
+        guard let client = apiClient else { return }
+        if !force && !vaccines.isEmpty { return }
+        isLoadingVaccines = true
+        vaccinesError = nil
+        defer { isLoadingVaccines = false }
         do {
             let resp: VaccineListResponse = try await client.get("/api/vaccines")
             vaccines = resp.items
         } catch {
-            syncError = error.localizedDescription
+            vaccinesError = error.localizedDescription
         }
     }
 

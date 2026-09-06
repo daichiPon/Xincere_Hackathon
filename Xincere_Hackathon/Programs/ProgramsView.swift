@@ -31,7 +31,7 @@ struct ProgramsView: View {
         .navigationTitle("子育て支援を調べる")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: ward) {
-            guard tab == .programs, !ward.isEmpty else { return }
+            guard !ward.isEmpty else { return }
             await model.fetchPrograms(ward: ward)
         }
         .task { await model.fetchVaccines() }
@@ -49,6 +49,8 @@ struct ProgramsView: View {
 
             if model.isLoadingPrograms {
                 ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+            } else if let error = model.programsError {
+                loadError(error) { await model.fetchPrograms(ward: ward) }
             } else if model.programs.isEmpty {
                 ContentUnavailableView("この区の制度が見つかりません", systemImage: "tray")
                     .padding(.top, 40)
@@ -117,8 +119,13 @@ struct ProgramsView: View {
             Text("国が定める標準的な接種スケジュールです。実際の時期は区から届く予診票と、かかりつけ医の案内に従ってください。")
                 .font(.caption).foregroundStyle(.secondary)
 
-            if model.vaccines.isEmpty {
+            if model.isLoadingVaccines {
                 ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+            } else if let error = model.vaccinesError {
+                loadError(error) { await model.fetchVaccines(force: true) }
+            } else if model.vaccines.isEmpty {
+                ContentUnavailableView("予防接種スケジュールが見つかりません", systemImage: "tray")
+                    .padding(.top, 40)
             } else {
                 ForEach(vaccineGroups, id: \.bucket) { group in
                     listSection(group.bucket, count: group.items.count) {
@@ -200,6 +207,22 @@ struct ProgramsView: View {
         Text("掲載内容は区の公式ページをもとにしています。受給の可否・金額・締切は必ず各区の窓口でご確認ください。")
             .font(.caption2).foregroundStyle(.tertiary)
             .padding(.horizontal, 4)
+    }
+
+    private func loadError(_ message: String, retry: @escaping () async -> Void) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.largeTitle).foregroundStyle(.secondary)
+            Text("読み込めませんでした")
+                .font(.headline)
+            Text(message)
+                .font(.caption).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            AsyncButton("再試行") { await retry() }
+                .frame(maxWidth: 200)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
     }
 
     @ViewBuilder
