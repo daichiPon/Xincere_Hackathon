@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// S-13 マイページ。子・世帯のプロフィール、パートナー連携、ログアウトを集約する。
 struct ProfileView: View {
