@@ -1,0 +1,24 @@
+ward,category,program_name,min_age_months,max_age_months,income_condition,program_type,amount_or_content,application_channel,required_documents,has_deadline,deadline_rule,source_url,fetched_at,reviewed_by,notes
+千代田区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.chiyoda.lg.jp/koho/kenko/koresha/dokuji-kaigo/kami.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず(見つかった紙おむつ支給は高齢者向けのみ)
+中央区,紙おむつ・育児用品支給,新生児誕生祝品(区内共通買物・食事券),0,0,なし,現物給付,区内共通買物・食事券(金額は要確認),窓口 or オンライン,出生届出後の申請,0,,https://www.city.chuo.lg.jp/a0020/kosodate/shussan/shussanshien/kaimonokenn.html,2026-09-06,,直接的な紙おむつ支給ではなく商品券。おむつ購入にも使える可能性あり
+港区,紙おむつ・育児用品支給,港区赤ちゃん応援定期便(ファミリー・アテンダント事業),0,12,なし,現物給付,見守り支援員が訪問し、おむつ等育児用品を配布(見守り訪問付き),郵送案内 → オンライン申請,なし,0,2025年4月1日以降生まれの0歳児等が対象,https://www.city.minato.tokyo.jp/chiikihoken/akacyan-ouen.html,2026-09-06,,港区は別途、区立保育園等利用者向け紙おむつサブスクも実施
+新宿区,紙おむつ・育児用品支給,おむつ費用助成,0,24,なし,現金給付,月額3000円,窓口 or オンライン,住民登録確認,0,,https://www.city.shinjuku.lg.jp/fukushi/file05_02_00006.html,2026-09-06,,定期便による現物配布ではなく費用助成(現金給付)方式
+文京区,紙おむつ・育児用品支給,赤ちゃんファースト(東京都出産・子育て応援事業),0,0,なし,現物給付,10万円相当のポイントで育児用品等をオンラインで選択購入,オンライン(IDカード配布後),こんにちは赤ちゃん訪問の受診,0,,https://www.city.bunkyo.lg.jp/b027/p001523.html,2026-09-06,,東京都内共通の枠組みを文京区が実施。区独自のおむつ定期便は別途確認できず
+台東区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.taito.lg.jp/kosodatekyouiku/kosodate/nenrei/0_years/index.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず(見つかった紙おむつ支給は高齢者向けのみ)
+墨田区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.sumida.lg.jp/online_service/sinsei/kourei/omutu.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず(見つかった紙おむつ支給は高齢者・障害者向けのみ)
+江東区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.koto.lg.jp/222015/fukushi/shogaisha/service/nichijo/6707.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず(見つかった紙おむつ支給は障害者・高齢者向けのみ)
+品川区,紙おむつ・育児用品支給,見守りおむつ定期便(0歳児見守り・子育てサポート事業),0,12,所得制限なし,現物給付,月1回程度の訪問で3000円相当の育児用品(紙おむつ・ミルク・離乳食等から選択)を配布・最大12回,オンライン,なし,1,満1歳になるまで(2023年4月1日以降生まれが対象),https://www.city.shinagawa.tokyo.jp/PC/kodomo/kodomo-ninnshinn/kodomo-ninnshinn-service/20231002181840.html,2026-09-06,,対面での見守り・相談も兼ねる事業
+目黒区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.meguro.tokyo.jp/kosodatekyouiku/kosodate/shien/shienservice/index.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず
+大田区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.ota.tokyo.jp/seikatsu/fukushi/kourei/kyufu/kamiomutu.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず(育児支援ヘルパー(1時間500円)はあるが現物給付ではない)
+世田谷区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.setagaya.lg.jp/02244/1188.html,2026-09-06,,調査の結果、乳児向けの紙おむつ定期便等の現物支給制度は確認できず(せたがや子育て利用券は産前産後サービス券で用途が異なる)
+渋谷区,紙おむつ・育児用品支給,紙おむつ購入費助成(渋谷区社会福祉協議会),,,要介護1以上または障害児等に限定,現金給付,商品価格の2割負担で紙おむつ購入可,渋谷区社会福祉協議会,要件確認書類,0,,https://www.shibuyashakyo.or.jp/chk/kamiomutsu-o.html,2026-09-06,,対象が要介護・障害児等に限定され一般の0歳児は対象外
+中野区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.tokyo-nakano.lg.jp/kenko_hukushi/kourei/hokenhukushi/omutsu.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず(おむつサービスは高齢者・障害者向けのみ)
+杉並区,紙おむつ・育児用品支給,,,,乳幼児(3歳未満)は対象外と明記,,,,,0,,https://www.city.suginami.tokyo.jp/s036/8094.html,2026-09-06,,公式サイトで「乳幼児は対象外」と明記されている数少ない事例
+豊島区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.toshima.lg.jp/203/kenko/shogai/zaitakushien/016102.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず
+北区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.kita.lg.jp/socialcare-health/elderly/1008607/1008614.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず
+荒川区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.arakawa.tokyo.jp/a028/koureishairyou/shien/hokenfukushi.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず
+板橋区,紙おむつ・育児用品支給,保育園おむつサブスク,0,,認可保育園等の利用者,現物給付,月額2000〜3000円程度で紙おむつ使い放題(保育園向け),各保育園経由,保育園利用登録,0,,https://sukusuku.tokyo-np.co.jp/hoiku/70729/,2026-09-06,,家庭への定期便ではなく保育園利用者限定のサブスク
+練馬区,紙おむつ・育児用品支給,保育園おむつサブスク,0,,認可保育園等の利用者,現物給付,紙おむつ使い放題(保育園向け、詳細金額は要確認),各保育園経由,保育園利用登録,0,,https://sukusuku.tokyo-np.co.jp/hoiku/70729/,2026-09-06,,家庭への定期便ではなく保育園利用者限定のサブスク。約360施設へ拡大予定と報道
+足立区,紙おむつ・育児用品支給,,,,所得制限撤廃の方針が報道されている(詳細未確認),,,,,0,,https://www.city.adachi.tokyo.jp/hisho/ku/kucho/20240216-mainichi.html,2026-09-06,,紙おむつ支給の対象拡大方針が報道されているが、乳児向け定期便の制度詳細は未確認。要再調査
+葛飾区,紙おむつ・育児用品支給,,,,,,,,,0,,https://www.city.katsushika.lg.jp/kenkou/1000052/1030186/1002141/1002160.html,2026-09-06,,調査の結果、乳児向け育児用品の現物支給制度は確認できず(紙おむつ支給は3歳〜64歳の障害者向けのみ)
+江戸川区,紙おむつ・育児用品支給,子育ておむつ定期便,0,12,なし,現物給付,見守り訪問員が毎月訪問し育児用品を配達(最大12回),オンライン申込,なし,1,2023年4月1日以降生まれの0歳児が対象(1歳になるまで),https://www.city.edogawa.tokyo.jp/e052/kosodate/kosodate/omutsuteikibin.html,2026-09-06,,見守り訪問と養育状況確認を兼ねる

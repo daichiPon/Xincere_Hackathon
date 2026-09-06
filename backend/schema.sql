@@ -39,6 +39,31 @@ CREATE TABLE IF NOT EXISTS measurements (
   created_at   INTEGER NOT NULL
 );
 
+-- 制度・給付金マスタ(23区の子育て支援制度。世帯データとは独立、全ユーザー共通)
+CREATE TABLE IF NOT EXISTS program_master (
+  id                   TEXT PRIMARY KEY,
+  ward                 TEXT NOT NULL,             -- 例: 世田谷区
+  category             TEXT NOT NULL,             -- 例: 出産祝い金 / 医療費助成 / 産後ケア 等
+  program_name         TEXT NOT NULL,
+  min_age_months       INTEGER,                   -- 対象月齢の下限(NULL可)
+  max_age_months       INTEGER,                   -- 対象月齢の上限(NULL可)
+  income_condition     TEXT NOT NULL DEFAULT '',  -- 所得条件(自由記述)
+  program_type         TEXT NOT NULL DEFAULT '',  -- 現金給付/実費償還/クーポン・利用料減免/現物給付/訪問・相談サービス
+  amount_or_content    TEXT NOT NULL DEFAULT '',  -- 金額 or 現物給付の内容(上限額・実費償還等も自由記述で表現)
+  application_channel  TEXT NOT NULL DEFAULT '',  -- 窓口 / 郵送 / オンライン
+  required_documents   TEXT NOT NULL DEFAULT '',
+  has_deadline         INTEGER NOT NULL DEFAULT 1,-- 締切のある申請=1 / いつでも使える・自動的なサービス=0(「やること」タスク化の判定に使う)
+  deadline_rule        TEXT NOT NULL DEFAULT '',  -- 起算日と期限の説明(has_deadline=0なら空でよい)
+  source_url           TEXT NOT NULL,             -- 出典 URL(必須。出典なし情報は登録不可)
+  fetched_at           TEXT NOT NULL,             -- 取得日(必須。例: 2026-09-06)
+  reviewed_by          TEXT NOT NULL DEFAULT '',  -- 金額を含む場合は人手レビュー者を必須にする運用
+  notes                TEXT NOT NULL DEFAULT '',
+  created_at           INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS program_master_ward ON program_master(ward);
+CREATE INDEX IF NOT EXISTS program_master_category ON program_master(category);
+
 CREATE TABLE IF NOT EXISTS procedure_tasks (
   id               TEXT PRIMARY KEY,
   household_id     TEXT NOT NULL REFERENCES households(id),
