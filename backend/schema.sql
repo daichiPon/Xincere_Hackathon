@@ -64,6 +64,26 @@ CREATE TABLE IF NOT EXISTS program_master (
 CREATE INDEX IF NOT EXISTS program_master_ward ON program_master(ward);
 CREATE INDEX IF NOT EXISTS program_master_category ON program_master(category);
 
+-- 予防接種スケジュールマスタ(全国共通。区に依存しない標準スケジュール)
+-- 出典・取得日は program_master と同じ運用(出典なし登録不可)。
+CREATE TABLE IF NOT EXISTS vaccine_schedule (
+  id                TEXT PRIMARY KEY,
+  vaccine_name      TEXT NOT NULL,
+  dose_label        TEXT NOT NULL,             -- 例: 1回目 / 追加 / 1期
+  dose_number       INTEGER NOT NULL DEFAULT 1,-- 並び順(毎年接種は0)
+  category          TEXT NOT NULL DEFAULT '定期', -- 定期 / 任意
+  disease           TEXT NOT NULL DEFAULT '',  -- 予防する病気
+  start_age_months  REAL,                      -- 標準的な接種開始月齢(1歳=12)
+  end_age_months    REAL,                      -- 定期接種として受けられる上限月齢(NULL可)
+  interval_note     TEXT NOT NULL DEFAULT '',  -- 前回からの間隔など
+  notes             TEXT NOT NULL DEFAULT '',
+  source_url        TEXT NOT NULL,
+  fetched_at        TEXT NOT NULL,
+  created_at        INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS vaccine_schedule_order ON vaccine_schedule(start_age_months, vaccine_name, dose_number);
+
 CREATE TABLE IF NOT EXISTS procedure_tasks (
   id               TEXT PRIMARY KEY,
   household_id     TEXT NOT NULL REFERENCES households(id),

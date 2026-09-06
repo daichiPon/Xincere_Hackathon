@@ -1,9 +1,10 @@
-name: Seed program_master to Production D1
+name: Seed master data to Production D1
 
 # 手動実行専用。GitHub の Actions タブから「Run workflow」で起動する。
-# backend/data/programs.csv の内容を本番 D1 の program_master テーブルに反映する。
-# csv-to-sql.js は決定的な id を振り INSERT OR REPLACE で出力するため、何度実行しても安全。
-# 念のため投入前に DELETE FROM program_master で全消しし、CSV を正とする。
+# backend/data/programs.csv と vaccines.csv を本番 D1 の
+# program_master / vaccine_schedule テーブルに反映する。
+# 生成スクリプトは決定的な id を振り INSERT OR REPLACE で出力するため何度実行しても安全。
+# 念のため投入前に各テーブルを全消しし、CSV を正とする。
 
 on:
   workflow_dispatch:
@@ -31,7 +32,9 @@ jobs:
 
       - name: Generate INSERT SQL from CSV
         working-directory: backend
-        run: node scripts/csv-to-sql.js data/programs.csv > data/programs.generated.sql
+        run: |
+          node scripts/csv-to-sql.js data/programs.csv > data/programs.generated.sql
+          node scripts/vaccines-to-sql.js data/vaccines.csv > data/vaccines.generated.sql
 
       - name: Apply schema (idempotent)
         working-directory: backend
@@ -42,21 +45,28 @@ jobs:
 
       - name: Clear existing rows
         working-directory: backend
-        run: npx wrangler d1 execute xincere-db --remote --command "DELETE FROM program_master;"
+        run: npx wrangler d1 execute xincere-db --remote --command "DELETE FROM program_master; DELETE FROM vaccine_schedule;"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 2d478aaa7b96f93c7262f947b6c92488
 
-      - name: Insert rows from CSV
+      - name: Insert program_master rows
         working-directory: backend
         run: npx wrangler d1 execute xincere-db --remote --file=data/programs.generated.sql
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 2d478aaa7b96f93c7262f947b6c92488
 
+      - name: Insert vaccine_schedule rows
+        working-directory: backend
+        run: npx wrangler d1 execute xincere-db --remote --file=data/vaccines.generated.sql
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 2d478aaa7b96f93c7262f947b6c92488
+
       - name: Verify
         working-directory: backend
-        run: npx wrangler d1 execute xincere-db --remote --command "SELECT COUNT(*) AS total, COUNT(DISTINCT ward) AS wards, COUNT(DISTINCT category) AS categories FROM program_master;"
+        run: npx wrangler d1 execute xincere-db --remote --command "SELECT (SELECT COUNT(*) FROM program_master) AS programs, (SELECT COUNT(*) FROM vaccine_schedule) AS vaccines;"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 2d478aaa7b96f93c7262f947b6c92488

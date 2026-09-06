@@ -192,6 +192,9 @@ final class AppModel {
     var programsWard: String = ""
     var isLoadingPrograms = false
 
+    // 予防接種スケジュール（F-5）
+    var vaccines: [Vaccine] = []
+
     // ネットワーク
     var apiClient: APIClient?
     var isSyncing = false
@@ -337,6 +340,57 @@ final class AppModel {
         } catch {
             return error.localizedDescription
         }
+    }
+
+    /// 制度1件を「やること」に追加する。
+    func addTask(fromProgram program: Program) async -> String {
+        guard let client = apiClient else { return "ログインが必要です" }
+        do {
+            struct Body: Encodable { let programId: String }
+            let resp: AddTaskResponse = try await client.post(
+                "/api/tasks/from-program", body: Body(programId: program.id)
+            )
+            await syncTasks()
+            return resp.alreadyExists == true ? "すでに追加されています" : "「\(program.programName)」をやることに追加しました"
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// この制度がすでにやることに入っているか。
+    func isTaskAdded(program: Program) -> Bool {
+        tasks.contains { $0.title == program.programName && $0.sourceURL == program.sourceUrl }
+    }
+
+    // MARK: - 予防接種
+
+    func fetchVaccines() async {
+        guard let client = apiClient, vaccines.isEmpty else { return }
+        do {
+            let resp: VaccineListResponse = try await client.get("/api/vaccines")
+            vaccines = resp.items
+        } catch {
+            syncError = error.localizedDescription
+        }
+    }
+
+    /// 予防接種1件を「やること」に追加する(期限=誕生日+推奨月齢)。
+    func addTask(fromVaccine vaccine: Vaccine) async -> String {
+        guard let client = apiClient else { return "ログインが必要です" }
+        do {
+            struct Body: Encodable { let vaccineId: String }
+            let resp: AddTaskResponse = try await client.post(
+                "/api/tasks/from-vaccine", body: Body(vaccineId: vaccine.id)
+            )
+            await syncTasks()
+            return resp.alreadyExists == true ? "すでに追加されています" : "「\(vaccine.title)」をやることに追加しました"
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    func isTaskAdded(vaccine: Vaccine) -> Bool {
+        tasks.contains { $0.title == vaccine.title && $0.category == "予防接種" }
     }
 
     // MARK: - 記録操作

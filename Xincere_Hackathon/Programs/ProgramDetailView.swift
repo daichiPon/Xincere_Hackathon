@@ -3,12 +3,18 @@ import SwiftUI
 /// S-11 制度の詳細。内容→対象→締切→申請方法→必要書類→出典→時点、の順。
 /// §7.2: 断定を避け、出典を必須で示し、最終確認は窓口へ誘導する。
 struct ProgramDetailView: View {
+    @Environment(AppModel.self) private var model
     let program: Program
+
+    @State private var toast: String?
+
+    private var isAdded: Bool { model.isTaskAdded(program: program) }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                addButton
                 contentSection
                 targetSection
                 deadlineSection
@@ -22,6 +28,34 @@ struct ProgramDetailView: View {
         .background(Theme.screenBackground)
         .navigationTitle("制度の詳細")
         .navigationBarTitleDisplayMode(.inline)
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Text(toast)
+                    .font(.subheadline.weight(.medium)).foregroundStyle(.white)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .background(Theme.brand, in: Capsule())
+                    .padding(.bottom, 24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var addButton: some View {
+        if isAdded {
+            Label("「やること」に追加済み", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.sage)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Theme.sage.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        } else {
+            AsyncButton(program.hasDeadlineFlag ? "「やること」に追加(締切あり)" : "「やること」に追加") {
+                let msg = await model.addTask(fromProgram: program)
+                withAnimation { toast = msg }
+                Task { try? await Task.sleep(for: .seconds(3)); withAnimation { toast = nil } }
+            }
+        }
     }
 
     private var header: some View {
@@ -157,5 +191,6 @@ struct ProgramDetailView: View {
             sourceUrl: "https://www.city.setagaya.lg.jp/", fetchedAt: "2026-09-06",
             notes: "訪問時に育児相談も受けられる"
         ))
+        .environment(AppModel())
     }
 }

@@ -5,6 +5,9 @@ import SwiftUI
 struct TasksView: View {
     @Environment(AppModel.self) private var model
 
+    enum Mode: String, CaseIterable { case list = "リスト", calendar = "カレンダー" }
+    @State private var mode: Mode = .list
+
     private var sortedTasks: [ProcedureTask] {
         model.tasks.sorted { a, b in
             // 完了は末尾、それ以外は期限が近い順。
@@ -46,8 +49,20 @@ struct TasksView: View {
                     .buttonStyle(.plain)
                     .padding(.bottom, 16)
 
-                    ForEach(Array(sortedTasks.enumerated()), id: \.element.id) { index, task in
-                        TimelineRow(task: task, isLast: index == sortedTasks.count - 1)
+                    Picker("表示", selection: $mode) {
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.bottom, 12)
+
+                    switch mode {
+                    case .list:
+                        ForEach(Array(sortedTasks.enumerated()), id: \.element.id) { index, task in
+                            TimelineRow(task: task, isLast: index == sortedTasks.count - 1)
+                        }
+                    case .calendar:
+                        TaskCalendarView()
+                            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardCornerRadius, style: .continuous))
                     }
                 }
                 .padding(16)
