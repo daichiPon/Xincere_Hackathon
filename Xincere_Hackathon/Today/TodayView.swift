@@ -5,11 +5,14 @@ import Combine
 /// 「最後の授乳から」を最大表示、記録は 2×2 グリッド、下部に直近ログ。
 struct TodayView: View {
     @Environment(AppModel.self) private var model
-    @Environment(AuthStore.self) private var authStore
+    @Binding var navPath: NavigationPath
     @State private var showFeedingTimer = false
     @State private var showBottleInput = false
-    @State private var showSettings = false
+    @State private var showTempInput = false
+    @State private var showManualLog = false
+    @State private var showProfile = false
     @State private var bottleAmountML = 120
+    @State private var tempValue = 36.8
     @State private var quickToast: String?
 
     // 1 秒ごとに経過時間表示を更新する。
@@ -17,11 +20,20 @@ struct TodayView: View {
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ScrollView {
                 VStack(spacing: 20) {
                     elapsedCard
                     quickGrid
+                    Button {
+                        showManualLog = true
+                    } label: {
+                        Label("時刻を指定して記録", systemImage: "clock.arrow.circlepath")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Theme.brand)
+                    }
+                    todayTally
+                    rhythmCard
                     recentSection
                 }
                 .padding(16)
@@ -39,18 +51,15 @@ struct TodayView: View {
                     .fixedSize()
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: {
+                    Button { showProfile = true } label: {
                         Image(systemName: "person.circle")
                             .font(.system(size: 22))
                             .foregroundStyle(Theme.brand)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) { EmergencyButton() }
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsSheet(inviteCode: model.inviteCode ?? authStore.inviteCode ?? "—") {
-                    authStore.logout()
-                }
+            .sheet(isPresented: $showProfile) {
+                ProfileView()
             }
             .sheet(isPresented: $showFeedingTimer) {
                 FeedingTimerView()
@@ -60,6 +69,15 @@ struct TodayView: View {
                     model.addLog(.bottle, detail: "\(amount)ml")
                     showToast("ミルク \(amount)ml を記録しました")
                 }
+            }
+            .sheet(isPresented: $showTempInput) {
+                TemperatureInputView(value: $tempValue) { t in
+                    model.addLog(.temperature, detail: String(format: "%.1f℃", t))
+                    showToast(String(format: "体温 %.1f℃ を記録しました", t))
+                }
+            }
+            .sheet(isPresented: $showManualLog) {
+                ManualLogView()
             }
             .overlay(alignment: .bottom) {
                 if let quickToast {
@@ -130,20 +148,89 @@ struct TodayView: View {
         case .bottle:
             showBottleInput = true
         case .sleep:
-            if model.isSleeping {
-                model.toggleSleep()
-                showToast("睡眠を記録しました")
-            } else {
-                model.toggleSleep()
-                showToast("睡眠を開始しました")
-            }
-        case .diaper:
-            model.addLog(.diaper, detail: "おしっこ")
-            showToast("おむつを記録しました")
+            model.toggleSleep()
+            showToast(model.isSleeping ? "睡眠を開始しました" : "睡眠を記録しました")
+        case .pee:
+            model.addLog(.pee, detail: "おしっこ")
+            showToast("おしっこを記録しました")
+        case .poop:
+            model.addLog(.poop, detail: "うんち")
+            showToast("うんちを記録しました")
         case .temperature:
-            model.addLog(.temperature, detail: "36.8℃")
-            showToast("体温を記録しました")
+            showTempInput = true
+        case .diaper:
+            break
         }
+    }
+
+    // MARK: - 今日のまとめ
+
+    private var todayTally: some View {
+        let cal = Calendar.current
+        let todays = model.logs.filter { cal.isDateInToday($0.time) }
+        func count(_ ks: [CareKind]) -> Int { todays.filter { ks.contains($0.kind) }.count }
+        return HStack(spacing: 8) {
+            tallyTile("授乳・ミルク", count([.feeding, .bottle]), .feeding)
+            tallyTile("睡眠", count([.sleep]), .sleep)
+            tallyTile("うんち", count([.poop]), .poop)
+            tallyTile("おしっこ", count([.pee, .diaper]), .pee)
+        }
+    }
+
+    // MARK: - リズム（傾向）
+
+    private var rhythmCard: some View {
+        let feeds = model.logs
+            .filter { ($0.kind == .feeding || $0.kind == .bottle) && $0.time > now.addingTimeInterval(-24 * 3600) }
+            .map(\.time)
+            .sorted()
+        let intervals = zip(feeds, feeds.dropFirst()).map { $1.timeIntervalSince($0) }
+        let avgInterval = intervals.isEmpty ? nil : intervals.reduce(0, +) / Double(intervals.count)
+
+        let cal = Calendar.current
+        let weekAgo = now.addingTimeInterval(-7 * 24 * 3600)
+        let nightFeeds = model.logs.filter {
+            ($0.kind == .feeding || $0.kind == .bottle) && $0.time > weekAgo
+                && (0..<6).contains(cal.component(.hour, from: $0.time))
+        }.count
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("最近のリズム").font(.headline)
+            HStack(spacing: 8) {
+                rhythmTile("授乳の間隔（24h平均）", avgInterval.map { intervalText($0) } ?? "—")
+                rhythmTile("夜間の授乳（1晩あたり）", nightFeeds > 0 ? "約\(nightFeeds / 7)回" : "—")
+            }
+        }
+        .cardStyle()
+    }
+
+    private func rhythmTile(_ title: String, _ value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value).font(.title3.weight(.bold)).foregroundStyle(Theme.brand)
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Theme.brandSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func intervalText(_ seconds: TimeInterval) -> String {
+        let m = Int(seconds / 60)
+        return m >= 60 ? "\(m / 60)時間\(m % 60)分" : "\(m)分"
+    }
+
+    private func tallyTile(_ title: String, _ n: Int, _ kind: CareKind) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: kind.symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(kind.tint)
+            Text("\(n)").font(.headline.monospacedDigit())
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func showToast(_ text: String) {
@@ -157,26 +244,73 @@ struct TodayView: View {
     // MARK: - 直近ログ
 
     private var recentSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let cal = Calendar.current
+        let todays = model.recentLogs.filter { cal.isDateInToday($0.time) }
+        return VStack(alignment: .leading, spacing: 12) {
             Text("今日の記録")
                 .font(.headline)
                 .padding(.horizontal, 4)
 
-            VStack(spacing: 0) {
-                ForEach(Array(model.recentLogs.prefix(6).enumerated()), id: \.element.id) { index, log in
-                    NavigationLink {
-                        LogEditView(log: log)
-                    } label: {
-                        LogRow(log: log)
-                    }
-                    .buttonStyle(.plain)
-                    if index < min(6, model.recentLogs.count) - 1 {
-                        Divider().padding(.leading, 52)
+            if todays.isEmpty {
+                Text("まだ今日の記録はありません。上のボタンから記録できます。")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .cardStyle()
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(todays.enumerated()), id: \.element.id) { index, log in
+                        NavigationLink {
+                            LogEditView(log: log)
+                        } label: {
+                            LogRow(log: log)
+                        }
+                        .buttonStyle(.plain)
+                        if index < todays.count - 1 {
+                            Divider().padding(.leading, 52)
+                        }
                     }
                 }
+                .cardStyle(padding: 8)
             }
-            .cardStyle(padding: 8)
         }
+    }
+}
+
+// MARK: - 体温入力
+
+private struct TemperatureInputView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var value: Double
+    let onRecord: (Double) -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 40) {
+                Spacer()
+                VStack(spacing: 8) {
+                    Text(String(format: "%.1f", value))
+                        .font(.system(size: 72, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(value >= 37.5 ? Theme.warn : Theme.brand)
+                    Text("℃").font(.title2).foregroundStyle(.secondary)
+                }
+                Stepper("", value: $value, in: 35.0...42.0, step: 0.1)
+                    .labelsHidden().scaleEffect(1.3)
+                Spacer()
+            }
+            .padding(24)
+            .background(Theme.screenBackground)
+            .navigationTitle("体温記録")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("キャンセル") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("記録") { onRecord(value); dismiss() }
+                        .font(.body.weight(.semibold))
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
@@ -224,7 +358,14 @@ struct LogRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(log.kind.title).font(.subheadline.weight(.medium))
-                Text(log.detail).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(log.detail).font(.caption).foregroundStyle(.secondary)
+                    if !log.recordedBy.isEmpty {
+                        Text("· \(log.recordedBy)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
             Spacer()
             Text(log.time.formatted(date: .omitted, time: .shortened))
@@ -307,75 +448,8 @@ private struct BottleInputView: View {
     }
 }
 
-// MARK: - 設定シート（招待コード・ログアウト）
-
-private struct SettingsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let inviteCode: String
-    let onLogout: () -> Void
-
-    @State private var copied = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    VStack(spacing: 12) {
-                        Text("招待コード")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text(inviteCode)
-                            .font(.system(size: 40, weight: .bold, design: .monospaced))
-                            .foregroundStyle(Theme.brand)
-                            .tracking(8)
-                        Button {
-                            UIPasteboard.general.string = inviteCode
-                            copied = true
-                            Task {
-                                try? await Task.sleep(for: .seconds(2))
-                                copied = false
-                            }
-                        } label: {
-                            Label(copied ? "コピーしました" : "コードをコピー",
-                                  systemImage: copied ? "checkmark" : "doc.on.doc")
-                                .font(.subheadline.weight(.medium))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Theme.brandSoft, in: RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.brand)
-                    }
-                    .padding(.vertical, 8)
-                } header: {
-                    Text("パートナーと共有")
-                } footer: {
-                    Text("このコードをパートナーに伝え、アプリ内「招待参加」タブで入力してもらうと同じ世帯のデータを共有できます。")
-                }
-
-                Section {
-                    Button(role: .destructive) {
-                        onLogout()
-                        dismiss()
-                    } label: {
-                        Label("ログアウト", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                }
-            }
-            .navigationTitle("設定")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("閉じる") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-}
-
 #Preview {
-    TodayView()
+    TodayView(navPath: .constant(NavigationPath()))
         .environment(AppModel())
         .environment(AuthStore())
 }

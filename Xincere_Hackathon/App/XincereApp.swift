@@ -14,7 +14,6 @@ struct XincereApp: App {
                             // 認証済みなら起動時にサーバーと同期
                             if let token = authStore.token {
                                 model.configure(token: token)
-                                model.inviteCode = authStore.inviteCode
                                 await model.syncAll()
                             }
                         }

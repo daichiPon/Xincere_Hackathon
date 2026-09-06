@@ -133,13 +133,14 @@ struct TaskCalendarView: View {
 
     private var undatedSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("期限が未確定のやること")
+            Text("日付が未定のやること")
                 .font(.subheadline.weight(.semibold))
+            Text("カレンダーに載せるには日付を決めてください。")
+                .font(.caption).foregroundStyle(.secondary)
             ForEach(undatedTasks) { task in
-                NavigationLink { TaskDetailView(taskID: task.id) } label: {
-                    TaskCard(task: task)
+                UndatedTaskRow(task: task) { date in
+                    Task { await model.setDueDate(task, to: date) }
                 }
-                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -169,6 +170,49 @@ struct TaskCalendarView: View {
         }
         while cells.count % 7 != 0 { cells.append(nil) }
         return cells
+    }
+}
+
+/// 日付未定タスクの1行。タイトルと「日付を決める」ボタン。
+private struct UndatedTaskRow: View {
+    let task: ProcedureTask
+    let onPick: (Date) -> Void
+
+    @State private var picking = false
+    @State private var date = Calendar.current.date(byAdding: .day, value: 7, to: .now)!
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                NavigationLink { TaskDetailView(taskID: task.id) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(task.category)
+                            .font(.caption.weight(.semibold)).foregroundStyle(Theme.brand)
+                        Text(task.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Button(picking ? "閉じる" : "日付を決める") { picking.toggle() }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+            }
+            if picking {
+                DatePicker("期限", selection: $date, displayedComponents: .date)
+                    .labelsHidden()
+                Button("この日付にする") {
+                    onPick(date)
+                    picking = false
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Theme.brandSoft, in: RoundedRectangle(cornerRadius: 10))
+                .foregroundStyle(Theme.brand)
+            }
+        }
+        .padding(12)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

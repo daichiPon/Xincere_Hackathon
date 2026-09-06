@@ -5,19 +5,21 @@ import Charts
 /// 帯の中に点を置く。評価語を使わない。修正/暦月齢トグルを常時明示。
 struct GrowthView: View {
     @Environment(AppModel.self) private var model
+    @Binding var navPath: NavigationPath
     @State private var metric: GrowthMetric = .weight
     @State private var showMeasurementInput = false
 
     var body: some View {
         @Bindable var model = model
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ScrollView {
                 VStack(spacing: 20) {
                     ageModePicker(model: model)
                     metricPicker
                     chartCard
                     latestCard
-                    milestonesCard
+                    addMeasurementCard
+                    recordTrendCard
                 }
                 .padding(16)
             }
@@ -25,20 +27,69 @@ struct GrowthView: View {
             .navigationTitle("成長")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { EmergencyButton() }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showMeasurementInput = true
-                    } label: {
-                        Label("計測", systemImage: "plus.circle.fill")
-                    }
-                }
-            }
             .sheet(isPresented: $showMeasurementInput) {
                 MeasurementInputView()
             }
         }
+    }
+
+    // 計測の入口をカードとして明示する（ツールバーの＋は気づきにくい）。
+    private var addMeasurementCard: some View {
+        Button {
+            showMeasurementInput = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "ruler.fill")
+                    .font(.title3).foregroundStyle(Theme.brand)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("身長・体重・頭囲を記録する")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                    Text("健診や自宅での計測結果を追加")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "plus.circle.fill").font(.title3).foregroundStyle(Theme.brand)
+            }
+            .cardStyle()
+        }
+        .buttonStyle(.plain)
+    }
+
+    // 「今日」で取っている記録の直近7日サマリー。
+    private var recordTrendCard: some View {
+        let cal = Calendar.current
+        let since = cal.date(byAdding: .day, value: -7, to: .now)!
+        let recent = model.logs.filter { $0.time >= since }
+        func n(_ kinds: [CareKind]) -> Int { recent.filter { kinds.contains($0.kind) }.count }
+        let feeds = n([.feeding, .bottle])
+        let poops = n([.poop])
+        let pees = n([.pee, .diaper])
+        let sleeps = recent.filter { $0.kind == .sleep }.count
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("この1週間の記録")
+                .font(.headline)
+            HStack(spacing: 8) {
+                trendTile("授乳・ミルク", feeds, "回", .feeding)
+                trendTile("睡眠", sleeps, "回", .sleep)
+                trendTile("うんち", poops, "回", .poop)
+                trendTile("おしっこ", pees, "回", .pee)
+            }
+            Text("1日あたり 授乳・ミルク 約\(feeds / 7)回、うんち 約\(poops / 7)回")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .cardStyle()
+    }
+
+    private func trendTile(_ title: String, _ value: Int, _ unit: String, _ kind: CareKind) -> some View {
+        VStack(spacing: 4) {
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text("\(value)").font(.title3.weight(.bold)).foregroundStyle(kind.tint)
+            Text(unit).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // 修正月齢/暦月齢トグル（§4.3.2: どちらで見ているか常時明示）
@@ -120,7 +171,7 @@ struct GrowthView: View {
             .frame(height: 240)
 
             // §4.3.3: 帯全体が正常範囲であることを常時テキストで併記
-            Label("3〜97 パーセンタイルの帯全体が正常の範囲です。帯からの逸脱が続くときは健診の相談項目に追加できます。",
+            Label("3〜97 パーセンタイルの帯全体が正常の範囲です。ひとつの点だけで判断せず、変化の向きを見てください。",
                   systemImage: "info.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -154,27 +205,6 @@ struct GrowthView: View {
         .background(Theme.brandSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // マイルストーン（達成チェックではなく目安）
-    private var milestonesCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("今の時期の目安")
-                .font(.headline)
-            ForEach(model.milestones) { m in
-                HStack(spacing: 12) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(Theme.sage)
-                        .frame(width: 28)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(m.title).font(.subheadline.weight(.medium))
-                        Text("\(m.range)　※まだの場合も個人差の範囲です")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-            }
-        }
-        .cardStyle()
-    }
 }
 
 // MARK: - 指標と参照値
@@ -229,6 +259,6 @@ struct PercentilePoint: Identifiable {
 }
 
 #Preview {
-    GrowthView()
+    GrowthView(navPath: .constant(NavigationPath()))
         .environment(AppModel())
 }

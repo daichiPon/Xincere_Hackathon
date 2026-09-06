@@ -26,16 +26,24 @@ struct AuthResponse: Decodable {
     let token: String
     let userId: String
     let householdId: String
-    let inviteCode: String?
 }
 
 struct HouseholdResponse: Decodable {
     let id: String
-    let inviteCode: String
     let childName: String
     let birthDate: Int      // milliseconds
     let isPreterm: Int      // 0 or 1
     let municipality: String
+}
+
+struct InviteResponse: Decodable {
+    let code: String?
+    let expiresAt: Int?     // milliseconds
+}
+
+struct InviteInfo {
+    let code: String
+    let expiresAt: Date
 }
 
 struct CareLogResponse: Decodable {
@@ -43,6 +51,7 @@ struct CareLogResponse: Decodable {
     let kind: String
     let time: Int           // milliseconds
     let detail: String
+    let recordedBy: String?
 }
 
 struct MeasurementResponse: Decodable {
@@ -73,7 +82,6 @@ struct TaskResponse: Decodable {
 struct JoinResponse: Decodable {
     let token: String
     let householdId: String
-    let inviteCode: String
 }
 
 // MARK: - クライアント

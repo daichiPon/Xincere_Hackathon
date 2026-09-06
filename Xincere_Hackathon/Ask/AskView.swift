@@ -4,6 +4,7 @@ import SwiftUI
 /// 医療的な質問を検知したら回答せず緊急時トリアージへ遷移する（§4.7.2）。
 struct AskView: View {
     @Environment(AppModel.self) private var model
+    @Binding var navPath: NavigationPath
     @State private var query = ""
     @State private var answer: AskAnswer?
     @State private var routeToEmergency = false
@@ -19,7 +20,7 @@ struct AskView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let answer {
@@ -27,6 +28,8 @@ struct AskView: View {
                             withAnimation { self.answer = nil }
                         }
                     }
+
+                    guideSection
 
                     Text("よくある質問")
                         .font(.headline)
@@ -36,7 +39,7 @@ struct AskView: View {
                         ask(chip)
                     }
 
-                    guideSection
+                    milestonesSection
                 }
                 .padding(16)
             }
@@ -46,9 +49,6 @@ struct AskView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .searchable(text: $query, prompt: "制度や育児のことを調べる")
             .onSubmit(of: .search) { ask(query) }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { EmergencyButton() }
-            }
             .fullScreenCover(isPresented: $routeToEmergency) {
                 EmergencyTriageView()
             }
@@ -79,6 +79,31 @@ struct AskView: View {
                          subtitle: "近くの小児科・夜間休日診療")
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    // 今の時期の目安（成長タブから移設。達成チェックではなく目安）
+    private var milestonesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("今の時期の目安")
+                .font(.headline)
+                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(model.milestones) { m in
+                    HStack(spacing: 12) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(Theme.sage)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(m.title).font(.subheadline.weight(.medium))
+                            Text("\(m.range)　※まだの場合も個人差の範囲です")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+            .cardStyle()
         }
     }
 
@@ -210,6 +235,6 @@ struct FlowLayout: Layout {
 }
 
 #Preview {
-    AskView()
+    AskView(navPath: .constant(NavigationPath()))
         .environment(AppModel())
 }

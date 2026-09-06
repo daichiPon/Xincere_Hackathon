@@ -7,7 +7,9 @@ enum CareKind: String, CaseIterable, Identifiable {
     case feeding      // 授乳（母乳）
     case bottle       // ミルク
     case sleep        // 睡眠
-    case diaper       // おむつ
+    case pee          // おしっこ
+    case poop         // うんち
+    case diaper       // おむつ（旧データ互換。新規記録では使わない）
     case temperature  // 体温
 
     var id: String { rawValue }
@@ -17,6 +19,8 @@ enum CareKind: String, CaseIterable, Identifiable {
         case .feeding:     "授乳"
         case .bottle:      "ミルク"
         case .sleep:       "睡眠"
+        case .pee:         "おしっこ"
+        case .poop:        "うんち"
         case .diaper:      "おむつ"
         case .temperature: "体温"
         }
@@ -27,6 +31,8 @@ enum CareKind: String, CaseIterable, Identifiable {
         case .feeding:     "drop.fill"
         case .bottle:      "waterbottle.fill"
         case .sleep:       "moon.zzz.fill"
+        case .pee:         "drop"
+        case .poop:        "seal.fill"
         case .diaper:      "square.stack.3d.up.fill"
         case .temperature: "thermometer.medium"
         }
@@ -37,12 +43,17 @@ enum CareKind: String, CaseIterable, Identifiable {
         case .feeding:     Theme.brand
         case .bottle:      Theme.sage
         case .sleep:       Color(red: 0.50, green: 0.47, blue: 0.68)
+        case .pee:         Color(red: 0.85, green: 0.72, blue: 0.40)
+        case .poop:        Color(red: 0.68, green: 0.52, blue: 0.38)
         case .diaper:      Color(red: 0.68, green: 0.58, blue: 0.42)
         case .temperature: Theme.warn
         }
     }
 
-    static let quickActions: [CareKind] = [.feeding, .bottle, .sleep, .diaper]
+    /// うんち・おしっこは1タップ即記録。授乳・ミルク・睡眠・体温は入力/タイマーへ。
+    var isOneTap: Bool { self == .pee || self == .poop }
+
+    static let quickActions: [CareKind] = [.feeding, .bottle, .sleep, .pee, .poop, .temperature]
 }
 
 struct CareLog: Identifiable {
@@ -50,9 +61,11 @@ struct CareLog: Identifiable {
     var kind: CareKind
     var time: Date
     var detail: String
+    var recordedBy: String
 
-    init(id: UUID = UUID(), kind: CareKind, time: Date = .now, detail: String) {
+    init(id: UUID = UUID(), kind: CareKind, time: Date = .now, detail: String, recordedBy: String = "") {
         self.id = id; self.kind = kind; self.time = time; self.detail = detail
+        self.recordedBy = recordedBy
     }
 }
 
@@ -167,7 +180,6 @@ final class AppModel {
     var isPreterm = false
     var municipality = "渋谷区"
     var useCorrectedAge = false
-    var inviteCode: String?
 
     // 記録（F-2）
     var logs: [CareLog]
@@ -175,7 +187,7 @@ final class AppModel {
     // 授乳タイマー
     var feedingStart: Date?
     var feedingSide: FeedingSide = .left
-    enum FeedingSide: String { case left = "左", right = "右" }
+    enum FeedingSide: String, CaseIterable { case left = "左", right = "右", both = "両方" }
 
     // 睡眠タイマー
     var sleepStart: Date?
@@ -248,7 +260,8 @@ final class AppModel {
                     id: UUID(uuidString: r.id) ?? UUID(),
                     kind: kind,
                     time: Date(timeIntervalSince1970: Double(r.time) / 1000),
-                    detail: r.detail
+                    detail: r.detail,
+                    recordedBy: r.recordedBy ?? ""
                 )
             }
 
@@ -267,7 +280,6 @@ final class AppModel {
             birthDate   = Date(timeIntervalSince1970: Double(household.birthDate) / 1000)
             isPreterm   = household.isPreterm != 0
             if !household.municipality.isEmpty { municipality = household.municipality }
-            inviteCode  = household.inviteCode
 
             syncError = nil
         } catch {
@@ -401,6 +413,85 @@ final class AppModel {
         tasks.contains { $0.title == vaccine.title && $0.category == "予防接種" }
     }
 
+    /// 手動で「やること」を1件追加する。成功時 nil、失敗時エラーメッセージ。
+    func createTask(title: String, category: String, dueDate: Date?, assignee: Assignee, summary: String) async -> String? {
+        guard let client = apiClient else { return "ログインが必要です" }
+        do {
+            struct Body: Encodable {
+                let title: String; let category: String
+                let dueDateMs: Int?; let assignee: String; let summary: String
+            }
+            struct Resp: Decodable { let id: String }
+            let _: Resp = try await client.post("/api/tasks", body: Body(
+                title: title, category: category,
+                dueDateMs: dueDate.map { Int($0.timeIntervalSince1970 * 1000) },
+                assignee: assignee.serverKey, summary: summary
+            ))
+            await syncTasks()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// 期限が未確定のタスクに日付を設定する。
+    func setDueDate(_ task: ProcedureTask, to date: Date) async {
+        guard let idx = tasks.firstIndex(where: { $0.id == task.id }) else { return }
+        tasks[idx].dueDate = date
+        guard let client = apiClient else { return }
+        do {
+            struct Body: Encodable { let dueDateMs: Int }
+            let _: TaskResponse = try await client.put(
+                "/api/tasks/\(task.id.uuidString.lowercased())",
+                body: Body(dueDateMs: Int(date.timeIntervalSince1970 * 1000))
+            )
+        } catch {
+            syncError = error.localizedDescription
+        }
+    }
+
+    // MARK: - 世帯プロフィール / パートナー連携
+
+    /// 世帯プロフィール(子の名前・生年月日・区・早産)をサーバに保存する。
+    func updateHousehold(childName: String, birthDate: Date, municipality: String, isPreterm: Bool) async -> String? {
+        guard let client = apiClient else { return "ログインが必要です" }
+        do {
+            struct Body: Encodable {
+                let childName: String; let birthDateMs: Int
+                let municipality: String; let isPreterm: Bool
+            }
+            let _: HouseholdResponse = try await client.patch("/api/household", body: Body(
+                childName: childName,
+                birthDateMs: Int(birthDate.timeIntervalSince1970 * 1000),
+                municipality: municipality, isPreterm: isPreterm
+            ))
+            self.childName = childName
+            self.birthDate = birthDate
+            self.municipality = municipality
+            self.isPreterm = isPreterm
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// 現在有効な招待コード(無ければ nil)。
+    func fetchInvite() async -> InviteInfo? {
+        guard let client = apiClient else { return nil }
+        let resp: InviteResponse? = try? await client.get("/api/household/invite")
+        guard let resp, let code = resp.code, let exp = resp.expiresAt else { return nil }
+        return InviteInfo(code: code, expiresAt: Date(timeIntervalSince1970: Double(exp) / 1000))
+    }
+
+    /// 新しい招待コードを発行する(10分有効・1回限り)。
+    func issueInvite() async -> InviteInfo? {
+        guard let client = apiClient else { return nil }
+        struct EmptyBody: Encodable {}
+        guard let resp: InviteResponse = try? await client.post("/api/household/invite", body: EmptyBody()),
+              let code = resp.code, let exp = resp.expiresAt else { return nil }
+        return InviteInfo(code: code, expiresAt: Date(timeIntervalSince1970: Double(exp) / 1000))
+    }
+
     // MARK: - 記録操作
 
     func addLog(_ kind: CareKind, detail: String, time: Date = .now) {
@@ -416,9 +507,9 @@ final class AppModel {
                     timeMs: Int(time.timeIntervalSince1970 * 1000),
                     detail: detail
                 ))
-                if let idx = logs.firstIndex(where: { $0.id == localId }),
-                   let sid = UUID(uuidString: resp.id) {
-                    logs[idx].id = sid
+                if let idx = logs.firstIndex(where: { $0.id == localId }) {
+                    if let sid = UUID(uuidString: resp.id) { logs[idx].id = sid }
+                    logs[idx].recordedBy = resp.recordedBy ?? ""
                 }
             } catch { /* ローカルデータをそのまま保持 */ }
         }
