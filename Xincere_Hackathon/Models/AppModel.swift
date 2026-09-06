@@ -477,21 +477,33 @@ final class AppModel {
         }
     }
 
+    private struct EmptyBody: Encodable {}
+
+    private func inviteInfo(from resp: InviteResponse) -> InviteInfo? {
+        guard let code = resp.code, let exp = resp.expiresAt else { return nil }
+        return InviteInfo(code: code, expiresAt: Date(timeIntervalSince1970: Double(exp) / 1000))
+    }
+
     /// 現在有効な招待コード(無ければ nil)。
     func fetchInvite() async -> InviteInfo? {
         guard let client = apiClient else { return nil }
-        let resp: InviteResponse? = try? await client.get("/api/household/invite")
-        guard let resp, let code = resp.code, let exp = resp.expiresAt else { return nil }
-        return InviteInfo(code: code, expiresAt: Date(timeIntervalSince1970: Double(exp) / 1000))
+        do {
+            let resp: InviteResponse = try await client.get("/api/household/invite")
+            return inviteInfo(from: resp)
+        } catch {
+            return nil
+        }
     }
 
     /// 新しい招待コードを発行する(10分有効・1回限り)。
     func issueInvite() async -> InviteInfo? {
         guard let client = apiClient else { return nil }
-        struct EmptyBody: Encodable {}
-        guard let resp: InviteResponse = try? await client.post("/api/household/invite", body: EmptyBody()),
-              let code = resp.code, let exp = resp.expiresAt else { return nil }
-        return InviteInfo(code: code, expiresAt: Date(timeIntervalSince1970: Double(exp) / 1000))
+        do {
+            let resp: InviteResponse = try await client.post("/api/household/invite", body: EmptyBody())
+            return inviteInfo(from: resp)
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - 記録操作
