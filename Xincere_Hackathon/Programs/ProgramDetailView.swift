@@ -7,8 +7,17 @@ struct ProgramDetailView: View {
     let program: Program
 
     @State private var toast: String?
+    @State private var pickingDate = false
+    @State private var chosenDate = Date.now
+    @State private var adding = false
 
     private var isAdded: Bool { model.isTaskAdded(program: program) }
+
+    /// 対象月齢の上限から算出する、対象でいられる期限の目安。
+    private var eligibleUntil: Date? {
+        guard let maxM = program.maxAgeMonths else { return nil }
+        return Calendar.current.date(byAdding: .month, value: maxM, to: model.birthDate)
+    }
 
     var body: some View {
         ScrollView {
@@ -49,13 +58,51 @@ struct ProgramDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(Theme.sage.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        } else if pickingDate {
+            VStack(alignment: .leading, spacing: 10) {
+                DatePicker("いつやる予定?", selection: $chosenDate, displayedComponents: .date)
+                if let until = eligibleUntil {
+                    Text("対象は \(until.formatted(.dateTime.year().month().day())) ごろまで")
+                        .font(.caption).foregroundStyle(Theme.warn)
+                }
+                HStack {
+                    Button("キャンセル") { pickingDate = false }
+                        .buttonStyle(.bordered)
+                    Spacer()
+                    Button(adding ? "追加中…" : "この日で追加") {
+                        Task {
+                            adding = true
+                            let msg = await model.addTask(fromProgram: program, dueDate: chosenDate)
+                            adding = false
+                            pickingDate = false
+                            flashToast(msg)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(adding)
+                }
+            }
+            .cardStyle()
         } else {
-            AsyncButton(program.hasDeadlineFlag ? "「やること」に追加(締切あり)" : "「やること」に追加") {
-                let msg = await model.addTask(fromProgram: program)
-                withAnimation { toast = msg }
-                Task { try? await Task.sleep(for: .seconds(3)); withAnimation { toast = nil } }
+            VStack(spacing: 8) {
+                AsyncButton("「やること」に追加") {
+                    let msg = await model.addTask(fromProgram: program)
+                    flashToast(msg)
+                }
+                Button {
+                    chosenDate = eligibleUntil ?? Calendar.current.date(byAdding: .day, value: 14, to: .now)!
+                    pickingDate = true
+                } label: {
+                    Label("予定日を決めて追加", systemImage: "calendar.badge.plus")
+                        .font(.caption.weight(.medium)).foregroundStyle(Theme.brand)
+                }
             }
         }
+    }
+
+    private func flashToast(_ msg: String) {
+        withAnimation { toast = msg }
+        Task { try? await Task.sleep(for: .seconds(3)); withAnimation { toast = nil } }
     }
 
     private var header: some View {
@@ -93,6 +140,11 @@ struct ProgramDetailView: View {
                 if let range = program.ageRangeText {
                     Label("対象月齢の目安: \(range)", systemImage: "calendar")
                         .font(.subheadline).foregroundStyle(.secondary)
+                }
+                if let until = eligibleUntil {
+                    Label("お子さんは \(until.formatted(.dateTime.year().month().day())) ごろまで対象",
+                          systemImage: "clock.badge.exclamationmark")
+                        .font(.subheadline).foregroundStyle(Theme.warn)
                 }
             }
         }

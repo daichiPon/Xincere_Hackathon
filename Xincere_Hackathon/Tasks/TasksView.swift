@@ -4,7 +4,6 @@ import SwiftUI
 /// カードは 3 種類のみ: 期限あり(赤系) / 予定(通常) / 完了(グレーアウト)。
 struct TasksView: View {
     @Environment(AppModel.self) private var model
-    @Binding var navPath: NavigationPath
 
     enum Mode: String, CaseIterable { case list = "リスト", calendar = "カレンダー" }
     @State private var mode: Mode = .list
@@ -40,7 +39,7 @@ struct TasksView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     NavigationLink {
@@ -65,6 +64,8 @@ struct TasksView: View {
             }
             .background(Theme.screenBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Theme.screenBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Picker("表示", selection: $mode) {
@@ -202,6 +203,6 @@ struct TaskCard: View {
 }
 
 #Preview {
-    TasksView(navPath: .constant(NavigationPath()))
+    TasksView()
         .environment(AppModel())
 }
