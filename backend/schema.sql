@@ -17,6 +17,18 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    INTEGER NOT NULL
 );
 
+-- パートナー招待コード。1コード=1回限り、発行から10分で失効。
+-- households.invite_code(レガシー列)ではなくこのテーブルで検証する。
+CREATE TABLE IF NOT EXISTS household_invites (
+  code         TEXT PRIMARY KEY,
+  household_id TEXT NOT NULL REFERENCES households(id),
+  expires_at   INTEGER NOT NULL,
+  used_at      INTEGER,
+  created_at   INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS household_invites_household ON household_invites(household_id);
+
 CREATE TABLE IF NOT EXISTS care_logs (
   id           TEXT PRIMARY KEY,
   household_id TEXT NOT NULL REFERENCES households(id),

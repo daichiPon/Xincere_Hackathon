@@ -4,9 +4,11 @@ import SwiftUI
 /// カードは 3 種類のみ: 期限あり(赤系) / 予定(通常) / 完了(グレーアウト)。
 struct TasksView: View {
     @Environment(AppModel.self) private var model
+    @Binding var navPath: NavigationPath
 
     enum Mode: String, CaseIterable { case list = "リスト", calendar = "カレンダー" }
     @State private var mode: Mode = .list
+    @State private var showAdd = false
 
     private var sortedTasks: [ProcedureTask] {
         model.tasks.sorted { a, b in
@@ -38,7 +40,7 @@ struct TasksView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     NavigationLink {
@@ -48,12 +50,6 @@ struct TasksView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.bottom, 16)
-
-                    Picker("表示", selection: $mode) {
-                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.bottom, 12)
 
                     switch mode {
                     case .list:
@@ -68,11 +64,23 @@ struct TasksView: View {
                 .padding(16)
             }
             .background(Theme.screenBackground.ignoresSafeArea())
-            .navigationTitle("やること")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { EmergencyButton() }
+                ToolbarItem(placement: .principal) {
+                    Picker("表示", selection: $mode) {
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showAdd = true } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showAdd) {
+                AddTaskView()
             }
         }
     }
@@ -194,6 +202,6 @@ struct TaskCard: View {
 }
 
 #Preview {
-    TasksView()
+    TasksView(navPath: .constant(NavigationPath()))
         .environment(AppModel())
 }

@@ -5,10 +5,10 @@ import Combine
 /// 「最後の授乳から」を最大表示、記録は 2×2 グリッド、下部に直近ログ。
 struct TodayView: View {
     @Environment(AppModel.self) private var model
-    @Environment(AuthStore.self) private var authStore
+    @Binding var navPath: NavigationPath
     @State private var showFeedingTimer = false
     @State private var showBottleInput = false
-    @State private var showSettings = false
+    @State private var showProfile = false
     @State private var bottleAmountML = 120
     @State private var quickToast: String?
 
@@ -17,11 +17,12 @@ struct TodayView: View {
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ScrollView {
                 VStack(spacing: 20) {
                     elapsedCard
                     quickGrid
+                    todayTally
                     recentSection
                 }
                 .padding(16)
@@ -39,18 +40,15 @@ struct TodayView: View {
                     .fixedSize()
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: {
+                    Button { showProfile = true } label: {
                         Image(systemName: "person.circle")
                             .font(.system(size: 22))
                             .foregroundStyle(Theme.brand)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) { EmergencyButton() }
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsSheet(inviteCode: model.inviteCode ?? authStore.inviteCode ?? "—") {
-                    authStore.logout()
-                }
+            .sheet(isPresented: $showProfile) {
+                ProfileView()
             }
             .sheet(isPresented: $showFeedingTimer) {
                 FeedingTimerView()
@@ -130,19 +128,45 @@ struct TodayView: View {
         case .bottle:
             showBottleInput = true
         case .sleep:
-            if model.isSleeping {
-                model.toggleSleep()
-                showToast("睡眠を記録しました")
-            } else {
-                model.toggleSleep()
-                showToast("睡眠を開始しました")
+            model.toggleSleep()
+            showToast(model.isSleeping ? "睡眠を開始しました" : "睡眠を記録しました")
+        case .pee:
+            model.addLog(.pee, detail: "おしっこ")
+            showToast("おしっこを記録しました")
+        case .poop:
+            model.addLog(.poop, detail: "うんち")
+            showToast("うんちを記録しました")
+        case .diaper, .temperature:
+            break
+        }
+    }
+
+    // MARK: - 今日のまとめ
+
+    private var todayTally: some View {
+        let cal = Calendar.current
+        let todays = model.logs.filter { cal.isDateInToday($0.time) }
+        func count(_ k: CareKind) -> Int { todays.filter { $0.kind == k }.count }
+        let items: [(CareKind, Int)] = [
+            (.feeding, count(.feeding) + count(.bottle)),
+            (.sleep, count(.sleep)),
+            (.pee, count(.pee)),
+            (.poop, count(.poop)),
+        ]
+        return HStack(spacing: 8) {
+            ForEach(items, id: \.0) { kind, n in
+                VStack(spacing: 4) {
+                    Image(systemName: kind.symbol)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(kind.tint)
+                    Text("\(n)").font(.headline.monospacedDigit())
+                    Text(kind == .feeding ? "授乳・ミルク" : kind.title)
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-        case .diaper:
-            model.addLog(.diaper, detail: "おしっこ")
-            showToast("おむつを記録しました")
-        case .temperature:
-            model.addLog(.temperature, detail: "36.8℃")
-            showToast("体温を記録しました")
         }
     }
 
@@ -307,75 +331,8 @@ private struct BottleInputView: View {
     }
 }
 
-// MARK: - 設定シート（招待コード・ログアウト）
-
-private struct SettingsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let inviteCode: String
-    let onLogout: () -> Void
-
-    @State private var copied = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    VStack(spacing: 12) {
-                        Text("招待コード")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text(inviteCode)
-                            .font(.system(size: 40, weight: .bold, design: .monospaced))
-                            .foregroundStyle(Theme.brand)
-                            .tracking(8)
-                        Button {
-                            UIPasteboard.general.string = inviteCode
-                            copied = true
-                            Task {
-                                try? await Task.sleep(for: .seconds(2))
-                                copied = false
-                            }
-                        } label: {
-                            Label(copied ? "コピーしました" : "コードをコピー",
-                                  systemImage: copied ? "checkmark" : "doc.on.doc")
-                                .font(.subheadline.weight(.medium))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Theme.brandSoft, in: RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.brand)
-                    }
-                    .padding(.vertical, 8)
-                } header: {
-                    Text("パートナーと共有")
-                } footer: {
-                    Text("このコードをパートナーに伝え、アプリ内「招待参加」タブで入力してもらうと同じ世帯のデータを共有できます。")
-                }
-
-                Section {
-                    Button(role: .destructive) {
-                        onLogout()
-                        dismiss()
-                    } label: {
-                        Label("ログアウト", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                }
-            }
-            .navigationTitle("設定")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("閉じる") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-}
-
 #Preview {
-    TodayView()
+    TodayView(navPath: .constant(NavigationPath()))
         .environment(AppModel())
         .environment(AuthStore())
 }

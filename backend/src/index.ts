@@ -76,8 +76,27 @@ async function verifyJWT(token: string, secret: string): Promise<JWTPayload | nu
   } catch { return null }
 }
 
+// 招待コードは 10 分で失効・1 回限り。
+const INVITE_TTL_MS = 10 * 60 * 1000
+
+// 紛らわしい文字(0/O, 1/I/L)を除いた 30 種から 8 文字。30^8 ≈ 6.6e11。
 function makeInviteCode(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase()
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+  const bytes = crypto.getRandomValues(new Uint8Array(8))
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
+}
+
+// 新しい招待コードを1件発行する(既存の未使用コードは失効させる)。
+async function issueInvite(db: D1Database, householdId: string): Promise<{ code: string; expiresAt: number }> {
+  const now = Date.now()
+  const expiresAt = now + INVITE_TTL_MS
+  const code = makeInviteCode()
+  await db.batch([
+    db.prepare('UPDATE household_invites SET expires_at = 0 WHERE household_id = ? AND used_at IS NULL').bind(householdId),
+    db.prepare('INSERT INTO household_invites (code, household_id, expires_at, used_at, created_at) VALUES (?, ?, ?, NULL, ?)')
+      .bind(code, householdId, expiresAt, now),
+  ])
+  return { code, expiresAt }
 }
 
 function jwtExp(): number {
@@ -121,35 +140,34 @@ app.post('/auth/register', async (c) => {
 
   const householdId = crypto.randomUUID()
   const userId = crypto.randomUUID()
-  const inviteCode = makeInviteCode()
   const now = Date.now()
   const hash = await hashPassword(body.password)
 
   await c.env.DB.batch([
     c.env.DB.prepare(
       'INSERT INTO households (id, invite_code, child_name, birth_date, is_preterm, municipality, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)'
-    ).bind(householdId, inviteCode, body.childName ?? 'あかちゃん', body.birthDateMs ?? now, body.municipality ?? '', now),
+    ).bind(householdId, crypto.randomUUID(), body.childName ?? 'あかちゃん', body.birthDateMs ?? now, body.municipality ?? '', now),
     c.env.DB.prepare(
       'INSERT INTO users (id, household_id, email, password_hash, name, created_at) VALUES (?, ?, ?, ?, ?, ?)'
     ).bind(userId, householdId, body.email, hash, body.name, now),
   ])
 
   const token = await signJWT({ sub: userId, hid: householdId, exp: jwtExp() }, c.env.JWT_SECRET)
-  return c.json({ token, userId, householdId, inviteCode }, 201)
+  return c.json({ token, userId, householdId }, 201)
 })
 
 app.post('/auth/login', async (c) => {
   const { email, password } = await c.req.json<{ email: string; password: string }>()
   const user = await c.env.DB.prepare(
-    'SELECT u.id, u.household_id, u.password_hash, h.invite_code FROM users u LEFT JOIN households h ON h.id = u.household_id WHERE u.email = ?'
-  ).bind(email).first<{ id: string; household_id: string; password_hash: string; invite_code: string }>()
+    'SELECT id, household_id, password_hash FROM users WHERE email = ?'
+  ).bind(email).first<{ id: string; household_id: string; password_hash: string }>()
 
   if (!user || !(await verifyPassword(password, user.password_hash))) {
     return c.json({ error: 'メールアドレスまたはパスワードが間違っています' }, 401)
   }
 
   const token = await signJWT({ sub: user.id, hid: user.household_id, exp: jwtExp() }, c.env.JWT_SECRET)
-  return c.json({ token, userId: user.id, householdId: user.household_id, inviteCode: user.invite_code })
+  return c.json({ token, userId: user.id, householdId: user.household_id })
 })
 
 // ---- 世帯 ----
@@ -175,16 +193,42 @@ app.patch('/api/household', async (c) => {
   return c.json(h)
 })
 
+// 現在有効な招待コードを返す(無ければ null)。
+app.get('/api/household/invite', async (c) => {
+  const row = await c.env.DB.prepare(
+    'SELECT code, expires_at FROM household_invites WHERE household_id = ? AND used_at IS NULL AND expires_at > ? ORDER BY created_at DESC LIMIT 1'
+  ).bind(c.get('householdId'), Date.now()).first<{ code: string; expires_at: number }>()
+  return c.json(row ? { code: row.code, expiresAt: row.expires_at } : { code: null, expiresAt: null })
+})
+
+// 新しい招待コードを発行する(10分有効・1回限り)。
+app.post('/api/household/invite', async (c) => {
+  const invite = await issueInvite(c.env.DB, c.get('householdId'))
+  return c.json(invite, 201)
+})
+
 app.post('/api/household/join', async (c) => {
   const { inviteCode } = await c.req.json<{ inviteCode: string }>()
   const userId = c.get('userId')
-  const h = await c.env.DB.prepare('SELECT id, invite_code FROM households WHERE invite_code = ?')
-    .bind(inviteCode.toUpperCase())
-    .first<{ id: string; invite_code: string }>()
-  if (!h) return c.json({ error: '招待コードが無効です' }, 404)
-  await c.env.DB.prepare('UPDATE users SET household_id = ? WHERE id = ?').bind(h.id, userId).run()
-  const token = await signJWT({ sub: userId, hid: h.id, exp: jwtExp() }, c.env.JWT_SECRET)
-  return c.json({ token, householdId: h.id, inviteCode: h.invite_code })
+  const code = (inviteCode ?? '').trim().toUpperCase()
+  if (!code) return c.json({ error: '招待コードを入力してください' }, 400)
+
+  const invite = await c.env.DB.prepare(
+    'SELECT household_id, expires_at, used_at FROM household_invites WHERE code = ?'
+  ).bind(code).first<{ household_id: string; expires_at: number; used_at: number | null }>()
+
+  if (!invite) return c.json({ error: '招待コードが見つかりません' }, 404)
+  if (invite.used_at !== null) return c.json({ error: 'この招待コードは使用済みです' }, 410)
+  if (invite.expires_at <= Date.now()) return c.json({ error: '招待コードの有効期限が切れています。相手に再発行してもらってください。' }, 410)
+
+  const now = Date.now()
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE household_invites SET used_at = ? WHERE code = ?').bind(now, code),
+    c.env.DB.prepare('UPDATE users SET household_id = ? WHERE id = ?').bind(invite.household_id, userId),
+  ])
+
+  const token = await signJWT({ sub: userId, hid: invite.household_id, exp: jwtExp() }, c.env.JWT_SECRET)
+  return c.json({ token, householdId: invite.household_id })
 })
 
 // ---- 記録ログ ----
