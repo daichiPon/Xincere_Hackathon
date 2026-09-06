@@ -21,6 +21,7 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var name = ""
+    @State private var ward = ""
     @State private var inviteCode = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -58,6 +59,9 @@ struct LoginView: View {
                         }
                         if mode == .register || mode == .join {
                             inputField("名前", text: $name)
+                        }
+                        if mode == .register {
+                            wardField
                         }
                         if mode == .join {
                             inputField("メールアドレス", text: $email, keyboard: .emailAddress)
@@ -116,7 +120,7 @@ struct LoginView: View {
     private var formValid: Bool {
         switch mode {
         case .login:    !email.isEmpty && password.count >= 6
-        case .register: !email.isEmpty && password.count >= 6 && !name.isEmpty
+        case .register: !email.isEmpty && password.count >= 6 && !name.isEmpty && !ward.isEmpty
         case .join:     !name.isEmpty && !email.isEmpty && password.count >= 6 && inviteCode.count == 6
         }
     }
@@ -149,8 +153,12 @@ struct LoginView: View {
     }
 
     private func doRegister() async throws {
-        struct Body: Encodable { let email: String; let password: String; let name: String }
-        let resp: AuthResponse = try await APIClient().post("/auth/register", body: Body(email: email, password: password, name: name))
+        struct Body: Encodable { let email: String; let password: String; let name: String; let municipality: String }
+        let resp: AuthResponse = try await APIClient().post(
+            "/auth/register",
+            body: Body(email: email, password: password, name: name, municipality: ward)
+        )
+        model.municipality = ward
         finalize(resp: resp, inviteCode: resp.inviteCode)
     }
 
@@ -173,6 +181,34 @@ struct LoginView: View {
     }
 
     // MARK: - 入力フィールド
+
+    private var wardField: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("お住まいの区")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Menu {
+                Picker("区", selection: $ward) {
+                    Text("選択してください").tag("")
+                    ForEach(TokyoWard.all, id: \.self) { Text($0).tag($0) }
+                }
+            } label: {
+                HStack {
+                    Text(ward.isEmpty ? "選択してください" : ward)
+                        .foregroundStyle(ward.isEmpty ? .secondary : .primary)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(14)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            Text("区ごとの給付金・助成制度の表示に使います。")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
 
     @ViewBuilder
     private func inputField(_ title: String, text: Binding<String>, keyboard: UIKeyboardType = .default, isSecure: Bool = false) -> some View {

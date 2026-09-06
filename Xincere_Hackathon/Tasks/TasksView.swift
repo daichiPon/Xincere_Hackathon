@@ -13,10 +13,39 @@ struct TasksView: View {
         }
     }
 
+    private var programsLink: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "building.columns.fill")
+                .font(.title3)
+                .foregroundStyle(Theme.brand)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(TokyoWard.normalized(model.municipality))の子育て支援制度")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("給付金・助成・保活の締切を見る")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
+        }
+        .cardStyle()
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    NavigationLink {
+                        ProgramsView()
+                    } label: {
+                        programsLink
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 16)
+
                     ForEach(Array(sortedTasks.enumerated()), id: \.element.id) { index, task in
                         TimelineRow(task: task, isLast: index == sortedTasks.count - 1)
                     }

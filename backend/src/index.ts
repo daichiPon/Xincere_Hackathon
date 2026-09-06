@@ -110,7 +110,7 @@ app.use('/api/*', async (c, next) => {
 app.post('/auth/register', async (c) => {
   const body = await c.req.json<{
     email: string; password: string; name: string
-    childName?: string; birthDateMs?: number
+    childName?: string; birthDateMs?: number; municipality?: string
   }>()
   if (!body.email || !body.password || !body.name) {
     return c.json({ error: 'email, password, name は必須です' }, 400)
@@ -128,7 +128,7 @@ app.post('/auth/register', async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(
       'INSERT INTO households (id, invite_code, child_name, birth_date, is_preterm, municipality, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)'
-    ).bind(householdId, inviteCode, body.childName ?? 'あかちゃん', body.birthDateMs ?? now, '', now),
+    ).bind(householdId, inviteCode, body.childName ?? 'あかちゃん', body.birthDateMs ?? now, body.municipality ?? '', now),
     c.env.DB.prepare(
       'INSERT INTO users (id, household_id, email, password_hash, name, created_at) VALUES (?, ?, ?, ?, ?, ?)'
     ).bind(userId, householdId, body.email, hash, body.name, now),
@@ -285,6 +285,176 @@ app.delete('/api/tasks/:id', async (c) => {
   await c.env.DB.prepare('DELETE FROM procedure_tasks WHERE id = ? AND household_id = ?')
     .bind(c.req.param('id'), c.get('householdId')).run()
   return c.json({ ok: true })
+})
+
+// ---- 制度マスタ(program_master)----
+// 23区の子育て支援制度。世帯データとは独立した全ユーザー共通の参照データ。
+
+type ProgramRow = {
+  id: string
+  ward: string
+  category: string
+  program_name: string
+  min_age_months: number | null
+  max_age_months: number | null
+  income_condition: string
+  program_type: string
+  amount_or_content: string
+  application_channel: string
+  required_documents: string
+  has_deadline: number
+  deadline_rule: string
+  source_url: string
+  fetched_at: string
+  reviewed_by: string
+  notes: string
+  created_at: number
+}
+
+// 制度一覧。ward / category / hasDeadline / ageMonths / q で絞り込める。
+app.get('/api/programs', async (c) => {
+  const { ward, category, hasDeadline, ageMonths, q } = c.req.query()
+  const where: string[] = []
+  const binds: unknown[] = []
+
+  if (ward) { where.push('ward = ?'); binds.push(ward) }
+  if (category) { where.push('category = ?'); binds.push(category) }
+  if (hasDeadline === '0' || hasDeadline === '1') {
+    where.push('has_deadline = ?'); binds.push(Number(hasDeadline))
+  }
+  if (ageMonths !== undefined && ageMonths !== '' && Number.isFinite(Number(ageMonths))) {
+    const m = Number(ageMonths)
+    where.push('(min_age_months IS NULL OR min_age_months <= ?)')
+    where.push('(max_age_months IS NULL OR max_age_months >= ?)')
+    binds.push(m, m)
+  }
+  if (q) {
+    where.push('(program_name LIKE ?1 OR amount_or_content LIKE ?1 OR notes LIKE ?1)')
+    binds.push(`%${q}%`)
+  }
+
+  const sql =
+    'SELECT * FROM program_master' +
+    (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
+    ' ORDER BY ward, category, program_name'
+
+  const { results } = await c.env.DB.prepare(sql).bind(...binds).all<ProgramRow>()
+  return c.json({ total: results.length, items: results })
+})
+
+// カテゴリ一覧(件数つき)。フィルタUI用。
+app.get('/api/programs/categories', async (c) => {
+  const ward = c.req.query('ward')
+  const sql = ward
+    ? 'SELECT category, COUNT(*) AS count FROM program_master WHERE ward = ? GROUP BY category ORDER BY category'
+    : 'SELECT category, COUNT(*) AS count FROM program_master GROUP BY category ORDER BY category'
+  const stmt = ward ? c.env.DB.prepare(sql).bind(ward) : c.env.DB.prepare(sql)
+  const { results } = await stmt.all()
+  return c.json(results)
+})
+
+app.get('/api/programs/:id', async (c) => {
+  const row = await c.env.DB.prepare('SELECT * FROM program_master WHERE id = ?')
+    .bind(c.req.param('id')).first<ProgramRow>()
+  if (!row) return c.json({ error: 'Not found' }, 404)
+  return c.json(row)
+})
+
+// deadline_rule の自由記述から締切日をベストエフォートで推定する。
+// 解釈できない表現は null を返し、締切なしタスク(status=scheduled)として登録する。
+function estimateDueDate(rule: string, birthMs: number): number | null {
+  const r = rule ?? ''
+  const addMonths = (base: number, months: number): number => {
+    const d = new Date(base)
+    d.setMonth(d.getMonth() + months)
+    return d.getTime()
+  }
+  let m: RegExpMatchArray | null
+  if ((m = r.match(/満?(\d+)\s*歳になるまで/)) || (m = r.match(/(\d+)\s*歳の年度末/))) {
+    return addMonths(birthMs, parseInt(m[1], 10) * 12)
+  }
+  if (/0\s*歳児|1\s*歳になるまで|満1\s*歳/.test(r)) {
+    return addMonths(birthMs, 12)
+  }
+  if ((m = r.match(/出生(?:届出?)?(?:から|後)\s*(\d+)\s*日以内/))) {
+    return birthMs + parseInt(m[1], 10) * 86_400_000
+  }
+  return null
+}
+
+function splitDocs(s: string): string[] {
+  return (s ?? '')
+    .split(/[、・,\/／\n]/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+}
+
+// 世帯の区(municipality)に該当する「締切あり制度」から procedure_tasks を生成する。
+// 既に同じ制度(source_url + title)から作られたタスクがあればスキップする。
+app.post('/api/tasks/generate', async (c) => {
+  const hid = c.get('householdId')
+  const body = await c.req.json<{ ward?: string; dryRun?: boolean }>().catch(() => ({} as { ward?: string; dryRun?: boolean }))
+
+  const household = await c.env.DB.prepare(
+    'SELECT municipality, birth_date FROM households WHERE id = ?'
+  ).bind(hid).first<{ municipality: string; birth_date: number }>()
+  if (!household) return c.json({ error: 'Household not found' }, 404)
+
+  const ward = (body.ward || household.municipality || '').trim()
+  if (!ward) return c.json({ error: '区(municipality)が未設定です。世帯情報を先に登録してください。' }, 400)
+
+  const { results: programs } = await c.env.DB.prepare(
+    'SELECT * FROM program_master WHERE ward = ? AND has_deadline = 1 ORDER BY category, program_name'
+  ).bind(ward).all<ProgramRow>()
+
+  const { results: existing } = await c.env.DB.prepare(
+    'SELECT title, source_url FROM procedure_tasks WHERE household_id = ?'
+  ).bind(hid).all<{ title: string; source_url: string }>()
+  const existingKeys = new Set(existing.map((e) => `${e.title} ${e.source_url}`))
+
+  const now = Date.now()
+  const toCreate: ProgramRow[] = programs.filter(
+    (p) => !existingKeys.has(`${p.program_name} ${p.source_url}`)
+  )
+
+  if (body.dryRun) {
+    return c.json({
+      ward,
+      created: 0,
+      skipped: programs.length - toCreate.length,
+      candidates: toCreate.map((p) => p.program_name),
+    })
+  }
+
+  const stmts = toCreate.map((p) => {
+    const due = estimateDueDate(p.deadline_rule, household.birth_date)
+    const soon = due !== null && due - now < 14 * 86_400_000
+    const summary = [
+      p.amount_or_content && `内容: ${p.amount_or_content}`,
+      p.income_condition && `所得条件: ${p.income_condition}`,
+      p.deadline_rule && `期限: ${p.deadline_rule}`,
+      p.notes && `備考: ${p.notes}`,
+    ].filter(Boolean).join('\n')
+
+    return c.env.DB.prepare(
+      'INSERT INTO procedure_tasks (id, household_id, title, category, due_date, status, assignee, summary, documents, counter, online_available, source_title, source_url, fetched_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      crypto.randomUUID(), hid, p.program_name, p.category, due,
+      soon ? 'dueSoon' : 'scheduled', 'unassigned', summary,
+      JSON.stringify(splitDocs(p.required_documents)),
+      p.application_channel,
+      /オンライン/.test(p.application_channel) ? 1 : 0,
+      `${p.ward} ${p.category}`, p.source_url, p.fetched_at, now
+    )
+  })
+
+  if (stmts.length) await c.env.DB.batch(stmts)
+
+  return c.json({
+    ward,
+    created: toCreate.length,
+    skipped: programs.length - toCreate.length,
+  })
 })
 
 export default app

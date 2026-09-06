@@ -86,7 +86,12 @@ dataRows.forEach((r, i) => {
     return;
   }
 
-  const id = crypto.randomUUID();
+  // id は ward|category|program_name から決定的に生成する。
+  // 同じCSVからは常に同じ id が出るので、INSERT OR REPLACE で何度でも再投入できる。
+  const id = crypto.createHash('sha1')
+    .update(`${get('ward')}|${get('category')}|${get('program_name')}`)
+    .digest('hex')
+    .slice(0, 32);
   const createdAt = Date.now();
   const hasDeadline = get('has_deadline') === '' ? 1 : (get('has_deadline') === '0' ? 0 : 1);
 
@@ -112,7 +117,7 @@ dataRows.forEach((r, i) => {
   ].join(', ');
 
   statements.push(
-    `INSERT INTO program_master (id, ward, category, program_name, min_age_months, max_age_months, income_condition, program_type, amount_or_content, application_channel, required_documents, has_deadline, deadline_rule, source_url, fetched_at, reviewed_by, notes, created_at) VALUES (${values});`
+    `INSERT OR REPLACE INTO program_master (id, ward, category, program_name, min_age_months, max_age_months, income_condition, program_type, amount_or_content, application_channel, required_documents, has_deadline, deadline_rule, source_url, fetched_at, reviewed_by, notes, created_at) VALUES (${values});`
   );
 });
 
