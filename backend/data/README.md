@@ -1,6 +1,20 @@
 # 制度・給付金データ 収集状況(2026-09-06 時点)
 
-23区の子育て支援制度データ。現在は**ローカルD1のみ**に投入済み、本番環境には未反映、gitにも未コミット。
+23区の子育て支援制度データ。gitにコミット済み(PR #1 でmainにマージ)。
+
+制度に加えて、全国共通の**予防接種スケジュール**(`vaccine_schedule` テーブル / `data/vaccines.csv`、27件)も収集済み。厚労省の予防接種スケジュール(2026年4月版・5種混合導入後)と know-VPD をもとに、ロタ〜二種混合まで。区に依存しないマスタデータ。
+
+**本番D1への反映方法**: GitHub の Actions タブ →「Seed master data to Production D1」→ Run workflow → 入力欄に `seed` と入力して実行。
+生成スクリプトは決定的な id を振り `INSERT OR REPLACE` を出力するので、CSVを直して再実行すれば本番に上書き反映される。
+
+**参照API**(`backend/src/index.ts`、認証必須):
+- `GET /api/programs?ward=&category=&hasDeadline=0|1&ageMonths=&q=` — 制度一覧(`{ total, items }`)
+- `GET /api/programs/categories?ward=` — カテゴリ別件数
+- `GET /api/programs/:id` — 単体
+- `GET /api/vaccines?category=定期|任意` — 予防接種スケジュール(`{ total, items }`)
+- `POST /api/tasks/generate {ward?, dryRun?}` — 世帯の区の「締切あり制度」から procedure_tasks を一括生成(既存はスキップ)
+- `POST /api/tasks/from-program {programId, dueDate?}` — 制度1件を「やること」に追加
+- `POST /api/tasks/from-vaccine {vaccineId}` — 予防接種1件を「やること」に追加(期限 = 誕生日 + 推奨月齢)
 
 ## ファイル構成
 

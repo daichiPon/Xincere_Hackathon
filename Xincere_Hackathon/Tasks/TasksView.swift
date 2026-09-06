@@ -5,6 +5,9 @@ import SwiftUI
 struct TasksView: View {
     @Environment(AppModel.self) private var model
 
+    enum Mode: String, CaseIterable { case list = "リスト", calendar = "カレンダー" }
+    @State private var mode: Mode = .list
+
     private var sortedTasks: [ProcedureTask] {
         model.tasks.sorted { a, b in
             // 完了は末尾、それ以外は期限が近い順。
@@ -13,12 +16,53 @@ struct TasksView: View {
         }
     }
 
+    private var programsLink: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "building.columns.fill")
+                .font(.title3)
+                .foregroundStyle(Theme.brand)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(TokyoWard.normalized(model.municipality))の子育て支援制度")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("給付金・助成・保活の締切を見る")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
+        }
+        .cardStyle()
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(sortedTasks.enumerated()), id: \.element.id) { index, task in
-                        TimelineRow(task: task, isLast: index == sortedTasks.count - 1)
+                    NavigationLink {
+                        ProgramsView()
+                    } label: {
+                        programsLink
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 16)
+
+                    Picker("表示", selection: $mode) {
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.bottom, 12)
+
+                    switch mode {
+                    case .list:
+                        ForEach(Array(sortedTasks.enumerated()), id: \.element.id) { index, task in
+                            TimelineRow(task: task, isLast: index == sortedTasks.count - 1)
+                        }
+                    case .calendar:
+                        TaskCalendarView()
+                            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardCornerRadius, style: .continuous))
                     }
                 }
                 .padding(16)

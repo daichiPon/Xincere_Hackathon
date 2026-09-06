@@ -187,6 +187,14 @@ final class AppModel {
     // やること（F-4）
     var tasks: [ProcedureTask]
 
+    // 区の制度一覧（F-5）
+    var programs: [Program] = []
+    var programsWard: String = ""
+    var isLoadingPrograms = false
+
+    // 予防接種スケジュール（F-5）
+    var vaccines: [Vaccine] = []
+
     // ネットワーク
     var apiClient: APIClient?
     var isSyncing = false
@@ -255,13 +263,134 @@ final class AppModel {
             childName   = household.childName
             birthDate   = Date(timeIntervalSince1970: Double(household.birthDate) / 1000)
             isPreterm   = household.isPreterm != 0
-            municipality = household.municipality
+            if !household.municipality.isEmpty { municipality = household.municipality }
             inviteCode  = household.inviteCode
 
             syncError = nil
         } catch {
             syncError = error.localizedDescription
         }
+
+        await syncTasks()
+    }
+
+    /// サーバーの procedure_tasks をローカルの tasks に反映する。
+    func syncTasks() async {
+        guard let client = apiClient else { return }
+        do {
+            let results: [TaskResponse] = try await client.get("/api/tasks")
+            tasks = results.map { r in
+                let docs = (try? JSONDecoder().decode([String].self, from: Data(r.documents.utf8))) ?? []
+                return ProcedureTask(
+                    id: UUID(uuidString: r.id) ?? UUID(),
+                    title: r.title,
+                    category: r.category,
+                    dueDate: r.dueDate.map { Date(timeIntervalSince1970: Double($0) / 1000) },
+                    status: ProcedureStatus(rawValue: r.status) ?? .scheduled,
+                    assignee: Assignee.from(serverKey: r.assignee),
+                    summary: r.summary,
+                    documents: docs,
+                    counter: r.counter,
+                    onlineAvailable: r.onlineAvailable != 0,
+                    sourceTitle: r.sourceTitle,
+                    sourceURL: r.sourceUrl,
+                    fetchedAt: r.fetchedAt
+                )
+            }
+        } catch {
+            syncError = error.localizedDescription
+        }
+    }
+
+    // MARK: - 区の制度
+
+    /// 指定した区の制度一覧を取得する。
+    func fetchPrograms(ward: String) async {
+        guard let client = apiClient else { return }
+        isLoadingPrograms = true
+        defer { isLoadingPrograms = false }
+        do {
+            var comps = URLComponents()
+            comps.path = "/api/programs"
+            comps.queryItems = [URLQueryItem(name: "ward", value: ward)]
+            let path = comps.string ?? "/api/programs"
+            let resp: ProgramListResponse = try await client.get(path)
+            programs = resp.items
+            programsWard = ward
+            syncError = nil
+        } catch {
+            syncError = error.localizedDescription
+        }
+    }
+
+    /// 世帯の区の「締切あり制度」から、やることタスクを生成する。
+    /// 成功時はユーザー向けの結果メッセージ、失敗時はエラーメッセージを返す。
+    func generateTasksFromPrograms(ward: String? = nil) async -> String {
+        guard let client = apiClient else { return "ログインが必要です" }
+        do {
+            struct Body: Encodable { let ward: String? }
+            let resp: GenerateTasksResponse = try await client.post(
+                "/api/tasks/generate", body: Body(ward: ward)
+            )
+            await syncTasks()
+            if resp.created == 0 {
+                return "追加できる新しいやることはありませんでした"
+            }
+            return "\(resp.ward)の制度から \(resp.created)件のやることを追加しました"
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// 制度1件を「やること」に追加する。
+    func addTask(fromProgram program: Program) async -> String {
+        guard let client = apiClient else { return "ログインが必要です" }
+        do {
+            struct Body: Encodable { let programId: String }
+            let resp: AddTaskResponse = try await client.post(
+                "/api/tasks/from-program", body: Body(programId: program.id)
+            )
+            await syncTasks()
+            return resp.alreadyExists == true ? "すでに追加されています" : "「\(program.programName)」をやることに追加しました"
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// この制度がすでにやることに入っているか。
+    func isTaskAdded(program: Program) -> Bool {
+        tasks.contains { $0.title == program.programName && $0.sourceURL == program.sourceUrl }
+    }
+
+    // MARK: - 予防接種
+
+    func fetchVaccines() async {
+        guard let client = apiClient, vaccines.isEmpty else { return }
+        do {
+            let resp: VaccineListResponse = try await client.get("/api/vaccines")
+            vaccines = resp.items
+        } catch {
+            syncError = error.localizedDescription
+        }
+    }
+
+    /// 予防接種1件を「やること」に追加する(期限=誕生日+推奨月齢)。
+    func addTask(fromVaccine vaccine: Vaccine) async -> String {
+        guard let client = apiClient else { return "ログインが必要です" }
+        do {
+            struct Body: Encodable { let vaccineId: String }
+            let resp: AddTaskResponse = try await client.post(
+                "/api/tasks/from-vaccine", body: Body(vaccineId: vaccine.id)
+            )
+            await syncTasks()
+            return resp.alreadyExists == true ? "すでに追加されています" : "「\(vaccine.title)」をやることに追加しました"
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    func isTaskAdded(vaccine: Vaccine) -> Bool {
+        tasks.contains { $0.title == vaccine.title && $0.category == "予防接種" }
     }
 
     // MARK: - 記録操作
