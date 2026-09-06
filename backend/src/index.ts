@@ -547,11 +547,11 @@ app.post('/api/tasks/generate', async (c) => {
   const { results: existing } = await c.env.DB.prepare(
     'SELECT title, source_url FROM procedure_tasks WHERE household_id = ?'
   ).bind(hid).all<{ title: string; source_url: string }>()
-  const existingKeys = new Set(existing.map((e) => `${e.title} ${e.source_url}`))
+  const existingKeys = new Set(existing.map((e) => `${e.title} ${e.source_url}`))
 
   const now = Date.now()
   const toCreate: ProgramRow[] = programs.filter(
-    (p) => !existingKeys.has(`${p.program_name} ${p.source_url}`)
+    (p) => !existingKeys.has(`${p.program_name} ${p.source_url}`)
   )
 
   if (body.dryRun) {
@@ -579,7 +579,7 @@ app.post('/api/tasks/generate', async (c) => {
 // 制度1件を「やること」に追加する。dueDate を明示すればそれを、なければ推定値を使う。
 app.post('/api/tasks/from-program', async (c) => {
   const hid = c.get('householdId')
-  const body = await c.req.json<{ programId?: string; dueDate?: number | null }>().catch(() => ({}))
+  const body = await c.req.json<{ programId?: string; dueDateMs?: number | null }>().catch(() => ({}))
   if (!body.programId) return c.json({ error: 'programId は必須です' }, 400)
 
   const household = await c.env.DB.prepare('SELECT birth_date FROM households WHERE id = ?')
@@ -595,7 +595,7 @@ app.post('/api/tasks/from-program', async (c) => {
   ).bind(hid, p.program_name, p.source_url).first<{ id: string }>()
   if (dup) return c.json({ created: 0, alreadyExists: true, taskId: dup.id })
 
-  const fields = programToTask(p, household.birth_date, body.dueDate ?? undefined)
+  const fields = programToTask(p, household.birth_date, body.dueDateMs ?? undefined)
   await insertTaskStmt(c, hid, fields, Date.now()).run()
   return c.json({ created: 1 })
 })

@@ -48,7 +48,12 @@ struct ProfileView: View {
             .navigationTitle("マイページ")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("閉じる") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saving ? "保存中…" : "保存", action: save)
+                        .fontWeight(.semibold)
+                        .disabled(!dirty || saving)
+                }
             }
             .onAppear(perform: loadFromModel)
             .task { invite = await model.fetchInvite() }
@@ -75,36 +80,25 @@ struct ProfileView: View {
         } footer: {
             if let savedNote {
                 Text(savedNote).foregroundStyle(Theme.sage)
+            } else if dirty {
+                Text("右上の「保存」で変更を確定します。")
             } else {
                 Text("生年月日と区は、予防接種や給付金の時期の計算に使います。")
             }
         }
+    }
 
-        if dirty {
-            Section {
-                Button {
-                    Task {
-                        saving = true
-                        let err = await model.updateHousehold(
-                            childName: childName, birthDate: birthDate,
-                            municipality: ward, isPreterm: isPreterm
-                        )
-                        saving = false
-                        savedNote = err ?? "保存しました"
-                        if err == nil {
-                            try? await Task.sleep(for: .seconds(2))
-                            savedNote = nil
-                        }
-                    }
-                } label: {
-                    HStack {
-                        if saving { ProgressView() }
-                        Text(saving ? "保存中…" : "変更を保存")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .disabled(saving)
-            }
+    private func save() {
+        Task {
+            saving = true
+            let err = await model.updateHousehold(
+                childName: childName, birthDate: birthDate,
+                municipality: ward, isPreterm: isPreterm
+            )
+            saving = false
+            savedNote = err ?? "保存しました"
+            try? await Task.sleep(for: .seconds(2))
+            savedNote = nil
         }
     }
 

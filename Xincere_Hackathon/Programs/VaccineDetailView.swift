@@ -10,6 +10,15 @@ struct VaccineDetailView: View {
 
     private var isAdded: Bool { model.isTaskAdded(vaccine: vaccine) }
 
+    private var recommendedDate: Date? {
+        guard let m = vaccine.startAgeMonths else { return nil }
+        return Calendar.current.date(byAdding: .month, value: Int(m.rounded()), to: model.birthDate)
+    }
+    private var eligibleUntil: Date? {
+        guard let m = vaccine.endAgeMonths else { return nil }
+        return Calendar.current.date(byAdding: .month, value: Int(m.rounded()), to: model.birthDate)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -19,6 +28,16 @@ struct VaccineDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(vaccine.timingText, systemImage: "calendar")
                             .font(.subheadline)
+                        if let d = recommendedDate {
+                            Label("お子さんだと \(d.formatted(.dateTime.year().month().day())) ごろから",
+                                  systemImage: "figure.and.child.holdinghands")
+                                .font(.subheadline).foregroundStyle(Theme.brand)
+                        }
+                        if let until = eligibleUntil {
+                            Label("定期接種の対象は \(until.formatted(.dateTime.year().month().day())) ごろまで",
+                                  systemImage: "clock.badge.exclamationmark")
+                                .font(.caption).foregroundStyle(Theme.warn)
+                        }
                         if !vaccine.intervalNote.isEmpty {
                             Label(vaccine.intervalNote, systemImage: "arrow.triangle.2.circlepath")
                                 .font(.caption).foregroundStyle(.secondary)

@@ -5,13 +5,12 @@ import Charts
 /// 帯の中に点を置く。評価語を使わない。修正/暦月齢トグルを常時明示。
 struct GrowthView: View {
     @Environment(AppModel.self) private var model
-    @Binding var navPath: NavigationPath
     @State private var metric: GrowthMetric = .weight
     @State private var showMeasurementInput = false
 
     var body: some View {
         @Bindable var model = model
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     ageModePicker(model: model)
@@ -19,14 +18,15 @@ struct GrowthView: View {
                     chartCard
                     latestCard
                     addMeasurementCard
-                    recordTrendCard
+                    RecordsWeekChart()
                 }
                 .padding(16)
             }
             .background(Theme.screenBackground.ignoresSafeArea())
             .navigationTitle("成長")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(Theme.screenBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .sheet(isPresented: $showMeasurementInput) {
                 MeasurementInputView()
             }
@@ -53,43 +53,6 @@ struct GrowthView: View {
             .cardStyle()
         }
         .buttonStyle(.plain)
-    }
-
-    // 「今日」で取っている記録の直近7日サマリー。
-    private var recordTrendCard: some View {
-        let cal = Calendar.current
-        let since = cal.date(byAdding: .day, value: -7, to: .now)!
-        let recent = model.logs.filter { $0.time >= since }
-        func n(_ kinds: [CareKind]) -> Int { recent.filter { kinds.contains($0.kind) }.count }
-        let feeds = n([.feeding, .bottle])
-        let poops = n([.poop])
-        let pees = n([.pee, .diaper])
-        let sleeps = recent.filter { $0.kind == .sleep }.count
-
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("この1週間の記録")
-                .font(.headline)
-            HStack(spacing: 8) {
-                trendTile("授乳・ミルク", feeds, "回", .feeding)
-                trendTile("睡眠", sleeps, "回", .sleep)
-                trendTile("うんち", poops, "回", .poop)
-                trendTile("おしっこ", pees, "回", .pee)
-            }
-            Text("1日あたり 授乳・ミルク 約\(feeds / 7)回、うんち 約\(poops / 7)回")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-        .cardStyle()
-    }
-
-    private func trendTile(_ title: String, _ value: Int, _ unit: String, _ kind: CareKind) -> some View {
-        VStack(spacing: 4) {
-            Text(title).font(.caption2).foregroundStyle(.secondary)
-            Text("\(value)").font(.title3.weight(.bold)).foregroundStyle(kind.tint)
-            Text(unit).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // 修正月齢/暦月齢トグル（§4.3.2: どちらで見ているか常時明示）
@@ -259,6 +222,6 @@ struct PercentilePoint: Identifiable {
 }
 
 #Preview {
-    GrowthView(navPath: .constant(NavigationPath()))
+    GrowthView()
         .environment(AppModel())
 }

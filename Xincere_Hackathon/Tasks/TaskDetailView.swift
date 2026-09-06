@@ -9,6 +9,7 @@ struct TaskDetailView: View {
 
     @State private var showAssigneeDialog = false
     @State private var showReportDialog = false
+    @State private var showDeleteDialog = false
 
     private var task: ProcedureTask? {
         model.tasks.first { $0.id == taskID }
@@ -30,6 +31,7 @@ struct TaskDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header(task)
+                dueDateSection(task)
                 summarySection(task)
                 documentsSection(task)
                 counterSection(task)
@@ -42,6 +44,12 @@ struct TaskDetailView: View {
         .confirmationDialog("担当を選ぶ", isPresented: $showAssigneeDialog, titleVisibility: .visible) {
             ForEach(Assignee.allCases) { a in
                 Button(a.rawValue) { updateAssignee(a) }
+            }
+        }
+        .confirmationDialog("このやることを一覧から外しますか?", isPresented: $showDeleteDialog, titleVisibility: .visible) {
+            Button("一覧から外す", role: .destructive) {
+                if let task { model.deleteTask(task) }
+                dismiss()
             }
         }
         .alert("情報の報告", isPresented: $showReportDialog) {
@@ -65,6 +73,41 @@ struct TaskDetailView: View {
                       systemImage: "calendar.badge.exclamationmark")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(task.status == .dueSoon ? Theme.warn : .secondary)
+            }
+        }
+    }
+
+    @State private var editingDue = false
+    @State private var dueDraft = Date.now
+
+    private func dueDateSection(_ task: ProcedureTask) -> some View {
+        section("予定日") {
+            VStack(alignment: .leading, spacing: 10) {
+                if editingDue {
+                    DatePicker("予定日", selection: $dueDraft, displayedComponents: .date)
+                        .labelsHidden()
+                    HStack {
+                        Button("キャンセル") { editingDue = false }.buttonStyle(.bordered)
+                        Spacer()
+                        Button("保存") {
+                            Task { await model.setDueDate(task, to: dueDraft) }
+                            editingDue = false
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                } else {
+                    HStack {
+                        Text(task.dueDate.map { $0.formatted(.dateTime.year().month().day()) } ?? "未定")
+                            .font(.subheadline)
+                        Spacer()
+                        Button(task.dueDate == nil ? "日付を決める" : "変更") {
+                            dueDraft = task.dueDate ?? Calendar.current.date(byAdding: .day, value: 14, to: .now)!
+                            editingDue = true
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.bordered)
+                    }
+                }
             }
         }
     }
@@ -159,6 +202,15 @@ struct TaskDetailView: View {
                     .padding(.vertical, 14)
                     .background(task.status == .done ? Color.secondary : Theme.brand,
                                 in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+
+            Button(role: .destructive) {
+                showDeleteDialog = true
+            } label: {
+                Label("一覧から外す", systemImage: "trash")
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
             }
         }
         .padding(.top, 4)

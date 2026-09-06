@@ -4,7 +4,6 @@ import SwiftUI
 /// 医療的な質問を検知したら回答せず緊急時トリアージへ遷移する（§4.7.2）。
 struct AskView: View {
     @Environment(AppModel.self) private var model
-    @Binding var navPath: NavigationPath
     @State private var query = ""
     @State private var answer: AskAnswer?
     @State private var routeToEmergency = false
@@ -20,7 +19,7 @@ struct AskView: View {
     ]
 
     var body: some View {
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let answer {
@@ -46,7 +45,8 @@ struct AskView: View {
             .background(Theme.screenBackground.ignoresSafeArea())
             .navigationTitle("きく")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(Theme.screenBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .searchable(text: $query, prompt: "制度や育児のことを調べる")
             .onSubmit(of: .search) { ask(query) }
             .fullScreenCover(isPresented: $routeToEmergency) {
@@ -235,6 +235,6 @@ struct FlowLayout: Layout {
 }
 
 #Preview {
-    AskView(navPath: .constant(NavigationPath()))
+    AskView()
         .environment(AppModel())
 }

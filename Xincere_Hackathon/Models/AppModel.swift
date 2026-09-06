@@ -358,13 +358,15 @@ final class AppModel {
         }
     }
 
-    /// 制度1件を「やること」に追加する。
-    func addTask(fromProgram program: Program) async -> String {
+    /// 制度1件を「やること」に追加する。dueDate を渡すと予定日として設定する。
+    func addTask(fromProgram program: Program, dueDate: Date? = nil) async -> String {
         guard let client = apiClient else { return "ログインが必要です" }
         do {
-            struct Body: Encodable { let programId: String }
+            struct Body: Encodable { let programId: String; let dueDateMs: Int? }
             let resp: AddTaskResponse = try await client.post(
-                "/api/tasks/from-program", body: Body(programId: program.id)
+                "/api/tasks/from-program",
+                body: Body(programId: program.id,
+                           dueDateMs: dueDate.map { Int($0.timeIntervalSince1970 * 1000) })
             )
             await syncTasks()
             return resp.alreadyExists == true ? "すでに追加されています" : "「\(program.programName)」をやることに追加しました"
@@ -576,6 +578,14 @@ final class AppModel {
                 body: Body(assignee: assignee.serverKey)
             )
         }
+    }
+
+    /// やることを一覧から外す。
+    func deleteTask(_ task: ProcedureTask) {
+        let id = task.id
+        tasks.removeAll { $0.id == id }
+        guard let client = apiClient else { return }
+        Task { try? await client.delete("/api/tasks/\(id.uuidString.lowercased())") }
     }
 
     // MARK: - タイマー

@@ -5,7 +5,6 @@ import Combine
 /// 「最後の授乳から」を最大表示、記録は 2×2 グリッド、下部に直近ログ。
 struct TodayView: View {
     @Environment(AppModel.self) private var model
-    @Binding var navPath: NavigationPath
     @State private var showFeedingTimer = false
     @State private var showBottleInput = false
     @State private var showTempInput = false
@@ -20,7 +19,7 @@ struct TodayView: View {
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        NavigationStack(path: $navPath) {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     elapsedCard
@@ -32,7 +31,6 @@ struct TodayView: View {
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(Theme.brand)
                     }
-                    todayTally
                     rhythmCard
                     recentSection
                 }
@@ -41,7 +39,8 @@ struct TodayView: View {
             .background(Theme.screenBackground.ignoresSafeArea())
             .navigationTitle("今日")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(Theme.screenBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -163,20 +162,6 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - 今日のまとめ
-
-    private var todayTally: some View {
-        let cal = Calendar.current
-        let todays = model.logs.filter { cal.isDateInToday($0.time) }
-        func count(_ ks: [CareKind]) -> Int { todays.filter { ks.contains($0.kind) }.count }
-        return HStack(spacing: 8) {
-            tallyTile("授乳・ミルク", count([.feeding, .bottle]), .feeding)
-            tallyTile("睡眠", count([.sleep]), .sleep)
-            tallyTile("うんち", count([.poop]), .poop)
-            tallyTile("おしっこ", count([.pee, .diaper]), .pee)
-        }
-    }
-
     // MARK: - リズム（傾向）
 
     private var rhythmCard: some View {
@@ -218,19 +203,6 @@ struct TodayView: View {
     private func intervalText(_ seconds: TimeInterval) -> String {
         let m = Int(seconds / 60)
         return m >= 60 ? "\(m / 60)時間\(m % 60)分" : "\(m)分"
-    }
-
-    private func tallyTile(_ title: String, _ n: Int, _ kind: CareKind) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: kind.symbol)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(kind.tint)
-            Text("\(n)").font(.headline.monospacedDigit())
-            Text(title).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func showToast(_ text: String) {
@@ -449,7 +421,7 @@ private struct BottleInputView: View {
 }
 
 #Preview {
-    TodayView(navPath: .constant(NavigationPath()))
+    TodayView()
         .environment(AppModel())
         .environment(AuthStore())
 }
